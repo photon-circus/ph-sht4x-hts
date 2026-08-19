@@ -1,7 +1,7 @@
 # ph-sht45-hts-model
 
 Unpublished independent behavioral model for selected SHT45-AD1B serial-number
-and one-shot T/RH operations.
+and one-shot T/RH operations, including soft-reset abort behavior.
 
 > [!WARNING]
 > **Lifecycle:** Incubating. This package is unpublished and sets `publish = false`.
@@ -19,15 +19,17 @@ can be read again after another command write. Measurement accepts `0xFD`,
 models each command's maximum busy duration, the six-byte CRC response at or
 after that frontier, and deletion after the first successful measurement read.
 Malformed write lengths are reported separately from unsupported one-byte
-commands.
+commands. Soft reset accepts command `0x94`, aborts a pending measurement, and
+keeps the device busy for 1 ms before returning to idle.
 
-Uncovered: every other SHT45 command, heater timing, reset, clock stretching,
-ambient physics, autonomous CRC corruption, and the device's response to writes
-while busy. The model does not represent hidden wall time; callers advance
-relative time explicitly, and a busy measurement read is modeled as a device
-NACK. Writes addressed to the modeled device while a measurement is busy return
-`WriteWhileBusy` as an explicit out-of-fidelity error and leave the pending
-measurement unchanged.
+Uncovered: every other SHT45 command, heater timing, general-call reset, clock
+stretching, ambient physics, autonomous CRC corruption, and the device's
+response to writes while busy apart from soft-reset abort. The model does not
+represent hidden wall time; callers advance relative time explicitly, and a
+busy measurement or reset read is modeled as a device NACK. Writes addressed
+to the modeled device while a measurement or reset is busy return
+`WriteWhileBusy` as an explicit out-of-fidelity error, except that nested soft
+reset returns its distinct reset-busy limitation.
 
 The model exposes separate write and read operations, representing the
 two-STOP transaction domain. Combined `write_read` or repeated-start behavior

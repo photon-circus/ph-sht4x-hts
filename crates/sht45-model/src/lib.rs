@@ -12,11 +12,14 @@ pub const MEASURE_HIGH_COMMAND: u8 = 0xfd;
 pub const MEASURE_MEDIUM_COMMAND: u8 = 0xf6;
 /// The modeled low-repeatability measurement command byte.
 pub const MEASURE_LOW_COMMAND: u8 = 0xe0;
+/// The modeled soft-reset command byte.
+pub const SOFT_RESET_COMMAND: u8 = 0x94;
 const RESPONSE_LEN: usize = 6;
 
 const HIGH_MEASUREMENT_NS: u64 = 8_300_000;
 const MEDIUM_MEASUREMENT_NS: u64 = 4_500_000;
 const LOW_MEASUREMENT_NS: u64 = 1_600_000;
+const SOFT_RESET_NS: u64 = 1_000_000;
 
 /// Errors for transactions outside the model's fidelity boundary.
 #[derive(Debug, PartialEq, Eq)]
@@ -33,8 +36,10 @@ pub enum Error {
     ReadBeforeCommand,
     /// A measurement read was attempted before its maximum completion time.
     Busy,
-    /// A command write was attempted while a measurement was busy, outside model fidelity.
+    /// A command write was attempted while a device action was busy, outside model fidelity.
     WriteWhileBusy,
+    /// A nested soft reset was attempted while reset was already busy.
+    ResetWhileBusy,
     /// A measurement was requested without explicit conversion ticks.
     MissingMeasurementTicks,
     /// A completed measurement was already consumed or is otherwise unavailable.
@@ -56,6 +61,9 @@ enum PendingCommand {
     Measurement {
         ready_at_ns: u64,
         ticks: MeasurementTicks,
+    },
+    Reset {
+        ready_at_ns: u64,
     },
 }
 
@@ -102,13 +110,6 @@ impl Sht45Model {
                 actual: address,
             });
         }
-        if matches!(
-            self.pending,
-            Some(PendingCommand::Measurement { ready_at_ns, .. })
-                if self.elapsed_ns < ready_at_ns
-        ) {
-            return Err(Error::WriteWhileBusy);
-        }
         if bytes.len() != 1 {
             return Err(Error::InvalidWriteLength {
                 expected: 1,
@@ -116,6 +117,31 @@ impl Sht45Model {
             });
         }
         match bytes[0] {
+            SOFT_RESET_COMMAND => match self.pending {
+                Some(PendingCommand::Reset { ready_at_ns }) if self.elapsed_ns < ready_at_ns => {
+                    Err(Error::ResetWhileBusy)
+                }
+                _ => {
+                    self.pending = Some(PendingCommand::Reset {
+                        ready_at_ns: self.elapsed_ns.saturating_add(SOFT_RESET_NS),
+                    });
+                    self.measurement_consumed = false;
+                    Ok(())
+                }
+            },
+            _command
+                if matches!(
+                    self.pending,
+                    Some(PendingCommand::Measurement { ready_at_ns, .. })
+                        if self.elapsed_ns < ready_at_ns
+                ) || matches!(
+                    self.pending,
+                    Some(PendingCommand::Reset { ready_at_ns })
+                        if self.elapsed_ns < ready_at_ns
+                ) =>
+            {
+                Err(Error::WriteWhileBusy)
+            }
             SERIAL_NUMBER_COMMAND => {
                 self.pending = Some(PendingCommand::Serial);
                 self.measurement_consumed = false;
@@ -180,6 +206,14 @@ impl Sht45Model {
                 self.pending = None;
                 self.measurement_consumed = true;
                 Ok(())
+            }
+            Some(PendingCommand::Reset { ready_at_ns }) => {
+                if self.elapsed_ns < ready_at_ns {
+                    return Err(Error::Busy);
+                }
+                self.pending = None;
+                self.measurement_consumed = false;
+                Err(Error::ReadBeforeCommand)
             }
             None if self.measurement_consumed => Err(Error::MeasurementDataUnavailable),
             None => Err(Error::ReadBeforeCommand),
@@ -291,6 +325,63 @@ mod tests {
                 crc8([0x56, 0x78]),
             ]
         );
+    }
+
+    #[test]
+    fn aborts_measurement_with_soft_reset_and_returns_to_idle() {
+        let mut model = Sht45Model::new(0x1234_5678).with_measurement_ticks(0xbeef, 0xbeef);
+        let mut response = [0; 6];
+
+        model.write(ADDRESS, &[MEASURE_HIGH_COMMAND]).unwrap();
+        model.advance_ns(1_000_000);
+        model.write(ADDRESS, &[SOFT_RESET_COMMAND]).unwrap();
+        model.advance_ns(SOFT_RESET_NS - 1);
+        assert_eq!(model.read(ADDRESS, &mut response), Err(Error::Busy));
+        model.advance_ns(1);
+        assert_eq!(
+            model.read(ADDRESS, &mut response),
+            Err(Error::ReadBeforeCommand)
+        );
+
+        model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]).unwrap();
+        model.read(ADDRESS, &mut response).unwrap();
+        assert_eq!(response, [0x12, 0x34, 0x37, 0x56, 0x78, 0x7d]);
+    }
+
+    #[test]
+    fn soft_reset_is_the_only_busy_write_exception() {
+        let mut model = Sht45Model::new(0).with_measurement_ticks(0x1234, 0x5678);
+
+        model.write(ADDRESS, &[MEASURE_HIGH_COMMAND]).unwrap();
+        model.advance_ns(1_000_000);
+        assert_eq!(model.write(ADDRESS, &[SOFT_RESET_COMMAND]), Ok(()));
+        assert_eq!(
+            model.write(ADDRESS, &[SOFT_RESET_COMMAND]),
+            Err(Error::ResetWhileBusy)
+        );
+        assert_eq!(
+            model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]),
+            Err(Error::WriteWhileBusy)
+        );
+    }
+
+    #[test]
+    fn reset_accumulates_split_delay_and_works_when_idle() {
+        let mut model = Sht45Model::new(0x1234_5678);
+        let mut response = [0; 6];
+
+        model.write(ADDRESS, &[SOFT_RESET_COMMAND]).unwrap();
+        model.advance_ns(400_000);
+        assert_eq!(model.read(ADDRESS, &mut response), Err(Error::Busy));
+        model.advance_ns(600_000);
+        assert_eq!(
+            model.read(ADDRESS, &mut response),
+            Err(Error::ReadBeforeCommand)
+        );
+
+        model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]).unwrap();
+        model.read(ADDRESS, &mut response).unwrap();
+        assert_eq!(response, [0x12, 0x34, 0x37, 0x56, 0x78, 0x7d]);
     }
 
     #[test]
