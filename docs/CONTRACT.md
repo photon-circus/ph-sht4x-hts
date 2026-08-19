@@ -6,7 +6,7 @@ The repository owns truthful supported SHT45 operations on one device through an
 
 ## Non-goals
 
-The repository does not own board topology; concrete bus/GPIO/power resources; sampling cadence; retry/escalation policy; heater application policy; SHT40/41/43 family claims; model conformance beyond the explicitly named host-only serial-number check; or physical qualification.
+The repository does not own board topology; concrete bus/GPIO/power resources; sampling cadence; retry/escalation policy; heater application policy; SHT40/41/43 family claims; model conformance beyond the explicitly named host-only serial-number and T/RH checks; or physical qualification.
 
 ## Initial invariants
 
@@ -93,9 +93,10 @@ validation assignment.
 - Implementation-tested: serial-number and T/RH measurement sequencing,
   response decoding, CRC validation, integer conversion, and error mapping
   through a scripted abstract I2C fake. This does not establish device behavior.
-- Model-conformant: serial-number read only, through the unpublished host-only
-  conformance package's public driver/model adapter check. Other operations are
-  uncovered.
+- Model-conformant: serial-number read and T/RH measurement at high, medium,
+  and low repeatability, through the unpublished host-only conformance
+  package's public driver/model adapter check, with independently asserted
+  command and maximum-delay mappings. Other operations are uncovered.
 - Physically observed: none.
 - Qualified: none.
 
