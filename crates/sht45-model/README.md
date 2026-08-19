@@ -80,7 +80,10 @@ and never as a fabricated NACK or payload:
   frame, or measurement or heater data that has reached its frontier — returns
   `WriteWithPendingResponse` and commits nothing. No retained source decides
   what the device does for that sequence, including for soft reset, so it is a
-  limitation rather than a modeled behavior.
+  limitation rather than a modeled behavior. A frame the model would not act on
+  keeps its own error instead: a malformed length, an unsupported command, or a
+  measurement with no injected ticks is reported as such even while a response
+  is pending, because such a write commits nothing and so discards nothing.
 
 ### Nonclaims
 

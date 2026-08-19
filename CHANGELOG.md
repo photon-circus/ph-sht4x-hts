@@ -65,7 +65,10 @@
   serial frame or completed measurement or heater data. The previous behavior
   chose an outcome for a transport sequence no retained source decides. Soft
   reset is not exempt: it aborts a busy action under `SHT45-RST-ABORT-001`, but
-  nothing declares that it discards a completed response.
+  nothing declares that it discards a completed response. A frame the model
+  would not act on keeps its own error — malformed lengths, unsupported
+  commands, and measurements without injected ticks are still reported
+  separately, because such a write commits nothing and so discards nothing.
 
 ### Documentation
 
