@@ -25,8 +25,12 @@
   driver I2C trace to the independent model, verifies the unequal-word
   `0x1234_5678` serial result and transmission order, and checks that a corrupted
   response produces the driver's CRC error.
+- Added host-only model conformance for high, medium, and low T/RH measurement,
+  including shared relative-delay advancement, injected `0xBEEF` ticks,
+  adapter CRC corruption, and a busy-model check for a no-op delay.
 
 ### Known issues
 
-- Model conformance covers only the serial-number read; all other operations are
-  uncovered, and the serial-number read is not physically validated.
+- Model conformance covers serial-number read and T/RH measurement at all three
+  repeatabilities; other operations are uncovered, and no operation is
+  physically validated.
