@@ -75,9 +75,9 @@ impl DelayNs for NoopDelay {
 
 #[test]
 fn public_serial_read_conforms_to_the_model_frame() {
-    let mut sensor = Sht45::new(ModelI2c::new(0xbeef_beef), NoopDelay);
+    let mut sensor = Sht45::new(ModelI2c::new(0x1234_5678), NoopDelay);
 
-    assert_eq!(block_on(sensor.read_serial_number()), Ok(0xbeef_beef));
+    assert_eq!(block_on(sensor.read_serial_number()), Ok(0x1234_5678));
 }
 
 #[test]

@@ -6,7 +6,7 @@ The repository owns truthful supported SHT45 operations on one device through an
 
 ## Non-goals
 
-The repository does not own board topology; concrete bus/GPIO/power resources; sampling cadence; retry/escalation policy; heater application policy; SHT40/41/43 family claims; model conformance; or physical qualification.
+The repository does not own board topology; concrete bus/GPIO/power resources; sampling cadence; retry/escalation policy; heater application policy; SHT40/41/43 family claims; model conformance beyond the explicitly named host-only serial-number check; or physical qualification.
 
 ## Initial invariants
 

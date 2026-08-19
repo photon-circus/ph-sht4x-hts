@@ -11,7 +11,8 @@ operation.
 
 The integration test adapts the driver's abstract async I2C calls to the
 independent model. It verifies the separate `0x89` write and six-byte read
-trace through the driver's public result, and corrupts a model response in the
-adapter to ensure the driver's public CRC error is observable.
+trace through the driver's public result using unequal serial words to
+discriminate transmission order, and corrupts a model response in the adapter
+to ensure the driver's public CRC error is observable.
 
 The adapter is test-only and is not compiled into either production library.

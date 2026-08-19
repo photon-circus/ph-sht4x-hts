@@ -15,8 +15,9 @@
   readout, with explicit OTP input, distinct command-frame errors, and model-only
   trace tests.
 - Added an unpublished host-only conformance package that adapts the public
-  driver I2C trace to the independent model, verifies the `0xBEEF_BEEF` serial
-  result, and checks that a corrupted response produces the driver's CRC error.
+  driver I2C trace to the independent model, verifies the unequal-word
+  `0x1234_5678` serial result and transmission order, and checks that a corrupted
+  response produces the driver's CRC error.
 
 ### Known issues
 
