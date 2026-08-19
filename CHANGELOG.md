@@ -60,6 +60,14 @@
   abort with serial recovery. This does not establish heater physics,
   application duty-cycle policy, or physical evidence.
 
+### Changed
+
+- Moved the conformance package's `embedded-hal`, `embedded-hal-async`,
+  `ph-sht45-hts`, and `ph-sht45-hts-model` dependencies from `[dependencies]` to
+  `[dev-dependencies]`. Its library target contains no conformance code and uses
+  none of them; only the integration test does. The dependency graph now states
+  that the driver and the model meet in a test rather than in a library.
+
 ### Known issues
 
 - Model conformance covers every current public device operation; no operation
