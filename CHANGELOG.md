@@ -69,7 +69,9 @@
 - The local gate now constructs the driver's package archive rather than only
   listing its contents, so cargo's verification build runs against the unpacked
   tree. `cargo package --list` exits successfully for a package whose source
-  file has been excluded; construction does not.
+  file has been excluded; construction does not. Over a dirty working tree the
+  package checks cover that tree and print a notice saying so, so the gate stays
+  runnable over uncommitted work without silently changing what it verified.
 - The declared version and publication lock now cover all three manifests
   instead of the driver alone, and are read from each `[package]` table rather
   than through `cargo pkgid`, which resolves through `Cargo.lock` and cannot see

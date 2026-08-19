@@ -63,14 +63,24 @@ done
 echo "check: documentation"
 RUSTDOCFLAGS="-D warnings" cargo doc --locked --workspace --all-features --no-deps
 
+# Cargo packages the committed tree and refuses a dirty one. That is the right
+# default for a release, but it would make the routine gate unrunnable over
+# ordinary uncommitted work, so fall back to the working tree and say so. The
+# release process runs from a clean checkout, where this notice cannot appear.
+package_flags=""
+if command -v git >/dev/null 2>&1 && [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+    echo "notice: working tree is dirty; package checks cover it, not the committed tree"
+    package_flags="--allow-dirty"
+fi
+
 # `--list` alone prints a file list without building anything. Constructing the
 # archive also runs cargo's verification build from the unpacked tree, which is
 # what catches a file missing from the packaged set.
 echo "check: package construction"
-cargo package --locked --manifest-path "$driver_manifest"
+cargo package --locked $package_flags --manifest-path "$driver_manifest"
 
 echo "check: package contents"
-cargo package --locked --manifest-path "$driver_manifest" --list
+cargo package --locked $package_flags --manifest-path "$driver_manifest" --list
 
 if command -v cargo-deny >/dev/null 2>&1; then
     echo "check: dependencies and licenses"
