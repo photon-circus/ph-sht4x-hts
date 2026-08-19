@@ -5,7 +5,7 @@ Incubating unpublished async no_std Rust driver for the Sensirion SHT45 humidity
 > [!WARNING]
 > **Lifecycle:** Incubating — bounded work intended to become a supported driver
 > **Distribution:** Unpublished; the candidate version is `0.1.0-incubating.1` and the manifest sets `publish = false`.
-> **Model conformance:** None. The serial-number read is implementation-tested only; no public driver operation is claimed as model-conformant.
+> **Model conformance:** None. An independent unpublished model covers the idle serial-number trace only; this driver's serial-number read remains implementation-tested and no public driver operation is claimed as model-conformant.
 > **Physical evidence:** None. No reviewed physical-device evidence supports a physically observed or qualified claim.
 > Evidence and limitations apply only to named operations; publication does not imply hardware qualification.
 
@@ -20,6 +20,8 @@ The package supports an implementation-tested serial-number read for one SHT45-A
 ## Platform support
 
 The crate is `no_std`, uses abstract `embedded-hal-async` I2C and delay resources, allocates no memory, and forbids unsafe code. The caller owns those resources, power-up timing, scheduling, retries, and recovery policy. The driver owns the serial command's execution wait. No model-conformance or physical-device claim is made.
+
+The independent model is a separate package; its existence does not establish conformance for this driver.
 
 ## License
 
