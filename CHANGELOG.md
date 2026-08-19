@@ -17,9 +17,10 @@
 - Added implementation-tested high, medium, and low repeatability T/RH
   measurement with Table 5 maximum delays, mandatory CRC validation, and
   uncropped integer millidegree and milli-%RH conversion.
-- Added an independent unpublished behavioral model for the idle SHT45 serial
-  readout, with explicit OTP input, distinct command-frame errors, and model-only
-  trace tests.
+- Added an independent unpublished behavioral model for SHT45 serial-number and
+  one-shot T/RH readouts, with explicit OTP and conversion-tick inputs, maximum
+  busy frontiers, one-shot consumption, distinct out-of-fidelity and transaction
+  errors, and model-only trace tests.
 - Added an unpublished host-only conformance package that adapts the public
   driver I2C trace to the independent model, verifies the unequal-word
   `0x1234_5678` serial result and transmission order, and checks that a corrupted
