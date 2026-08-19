@@ -18,9 +18,8 @@ Refine this list when implementation creates review-blocking invariants; do not 
 
 ## Sources and device propositions
 
-Retained propositions are limited to facts consumed by the implemented
-serial-number and T/RH measurement operations or retained to bound prospective
-soft-reset work. They are supported by
+Retained propositions are limited to facts consumed by the implemented driver
+operations or the independent model's soft-reset behavior. They are supported by
 Sensirion Datasheet SHT4x, D1 Version 7.3 (June 2026),
 `HT_DS_Datasheet_SHT4x_V7.3.pdf`,
 https://sensirion.com/media/documents/33FD6951/6A7C10A0/HT_DS_Datasheet_SHT4x_V7.3.pdf,
@@ -81,9 +80,9 @@ this repository. Older SHT4x PDF revisions are not co-authority.
   measurement ticks; a read while the device is busy before the maximum timing
   frontier is a device NACK under `SHT45-I2C-XFER-001`, while a second read
   without a new command is a model limitation rather than an invented payload
-  or NACK. The current model rejects every write while a measurement is busy as
-  outside model fidelity without replacing the pending measurement. A future
-  soft-reset model must implement the exception in `SHT45-RST-ABORT-001`.
+  or NACK. The model rejects writes while a measurement is busy as outside
+  model fidelity without replacing the pending measurement, except that the
+  soft reset in `SHT45-RST-ABORT-001` aborts it and begins reset timing.
 
 - `SHT45-RST-CMD-001` — Soft reset is command byte `0x94`; the device ACKs and
   returns no CRC data payload (Table 8). Evidence state: supported.
@@ -94,11 +93,11 @@ this repository. Older SHT4x PDF revisions are not co-authority.
   this repository does not consume. Evidence state: supported. Local
   consequence: a future driver reset operation waits 1000 µs after the ACK.
 - `SHT45-RST-ABORT-001` — Any command that triggers an action can be aborted by
-  soft reset (section 4.8). Evidence state: supported. Future model requirement:
-  accept `0x94` while measurement is busy, discard the pending measurement, and
-  remain busy for the 1 ms reset interval; reads before that interval NACK and
-  reads after it observe an idle device. Until that behavior is implemented,
-  soft reset remains outside the model's fidelity boundary.
+  soft reset (section 4.8). Evidence state: supported. Model requirement: accept
+  `0x94` while measurement is busy, discard the pending measurement, and remain
+  busy for the 1 ms reset interval; reads before that interval NACK and reads
+  after it observe an idle device. The independent model implements this
+  reset/abort trace; this is not driver-conformance or physical evidence.
 
 Add the smallest permanent proposition and exact provenance only when current
 implementation, model, conformance, physical evidence, or bug disposition
@@ -110,6 +109,10 @@ validation assignment.
 - Implementation-tested: serial-number and T/RH measurement sequencing,
   response decoding, CRC validation, integer conversion, and error mapping
   through a scripted abstract I2C fake. This does not establish device behavior.
+- Model-only: the independent model covers soft reset while idle or measuring,
+  measurement abort, the 1 ms reset-busy frontier, and return to idle while
+  preserving the explicit OTP serial. This does not establish driver
+  conformance or device behavior.
 - Model-conformant: serial-number read and T/RH measurement at high, medium,
   and low repeatability, through the unpublished host-only conformance
   package's public driver/model adapter check, with independently asserted

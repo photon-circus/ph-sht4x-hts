@@ -34,7 +34,7 @@ pub enum Error {
     InvalidReadLength(usize),
     /// A read was attempted without a preceding command write.
     ReadBeforeCommand,
-    /// A measurement read was attempted before its maximum completion time.
+    /// A measurement or reset read was attempted before its maximum completion time.
     Busy,
     /// A command write was attempted while a device action was busy, outside model fidelity.
     WriteWhileBusy,
@@ -110,6 +110,25 @@ impl Sht45Model {
                 actual: address,
             });
         }
+        let measurement_busy = matches!(
+            self.pending,
+            Some(PendingCommand::Measurement { ready_at_ns, .. })
+                if self.elapsed_ns < ready_at_ns
+        );
+        let reset_busy = matches!(
+            self.pending,
+            Some(PendingCommand::Reset { ready_at_ns }) if self.elapsed_ns < ready_at_ns
+        );
+        if measurement_busy && bytes != [SOFT_RESET_COMMAND] {
+            return Err(Error::WriteWhileBusy);
+        }
+        if reset_busy {
+            return if bytes == [SOFT_RESET_COMMAND] {
+                Err(Error::ResetWhileBusy)
+            } else {
+                Err(Error::WriteWhileBusy)
+            };
+        }
         if bytes.len() != 1 {
             return Err(Error::InvalidWriteLength {
                 expected: 1,
@@ -117,30 +136,12 @@ impl Sht45Model {
             });
         }
         match bytes[0] {
-            SOFT_RESET_COMMAND => match self.pending {
-                Some(PendingCommand::Reset { ready_at_ns }) if self.elapsed_ns < ready_at_ns => {
-                    Err(Error::ResetWhileBusy)
-                }
-                _ => {
-                    self.pending = Some(PendingCommand::Reset {
-                        ready_at_ns: self.elapsed_ns.saturating_add(SOFT_RESET_NS),
-                    });
-                    self.measurement_consumed = false;
-                    Ok(())
-                }
-            },
-            _command
-                if matches!(
-                    self.pending,
-                    Some(PendingCommand::Measurement { ready_at_ns, .. })
-                        if self.elapsed_ns < ready_at_ns
-                ) || matches!(
-                    self.pending,
-                    Some(PendingCommand::Reset { ready_at_ns })
-                        if self.elapsed_ns < ready_at_ns
-                ) =>
-            {
-                Err(Error::WriteWhileBusy)
+            SOFT_RESET_COMMAND => {
+                self.pending = Some(PendingCommand::Reset {
+                    ready_at_ns: self.elapsed_ns.saturating_add(SOFT_RESET_NS),
+                });
+                self.measurement_consumed = false;
+                Ok(())
             }
             SERIAL_NUMBER_COMMAND => {
                 self.pending = Some(PendingCommand::Serial);
@@ -363,6 +364,18 @@ mod tests {
             model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]),
             Err(Error::WriteWhileBusy)
         );
+    }
+
+    #[test]
+    fn busy_state_precedes_malformed_write_validation() {
+        for pending_command in [MEASURE_HIGH_COMMAND, SOFT_RESET_COMMAND] {
+            let mut model = Sht45Model::new(0).with_measurement_ticks(0x1234, 0x5678);
+            model.write(ADDRESS, &[pending_command]).unwrap();
+
+            for bytes in [&[][..], &[SERIAL_NUMBER_COMMAND, 0x00][..]] {
+                assert_eq!(model.write(ADDRESS, bytes), Err(Error::WriteWhileBusy));
+            }
+        }
     }
 
     #[test]
