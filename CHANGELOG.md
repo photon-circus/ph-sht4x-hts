@@ -60,6 +60,21 @@
   abort with serial recovery. This does not establish heater physics,
   application duty-cycle policy, or physical evidence.
 
+### Changed
+
+- The behavioral model now derives CRC-8 by reducing four bits per table lookup
+  rather than with the bit-at-a-time shift register the driver uses. The two
+  implementations were previously byte-identical, so an implementation defect
+  would have reproduced itself in the oracle and survived conformance
+  comparison. Model output is unchanged.
+
+### Added
+
+- Host-only conformance coverage sweeping all 65 536 sixteen-bit words through
+  the model's response frame and the driver's CRC validation, establishing that
+  the two independent derivations agree across the whole input domain rather
+  than on the datasheet's single vector alone.
+
 ### Known issues
 
 - Model conformance covers every current public device operation; no operation

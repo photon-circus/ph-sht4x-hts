@@ -176,6 +176,27 @@ fn adapter_exposes_the_model_command_domain() {
     assert_eq!(response, [0xbe, 0xef, 0x92, 0xbe, 0xef, 0x92]);
 }
 
+/// The driver derives CRC-8 with a bit-at-a-time shift register; the model
+/// reduces four bits per table lookup. They are deliberately different
+/// formulations of `SHT45-CRC-001` so that a defect in one cannot hide in the
+/// other. This sweeps every 16-bit word through the model's frame and the
+/// driver's validation to show the two agree across the whole input domain,
+/// not merely on the datasheet's single vector.
+#[test]
+fn driver_and_model_crc_agree_across_every_word() {
+    for word in 0..=u16::MAX {
+        let serial = (u32::from(word) << 16) | u32::from(word);
+        let (i2c, _delay, _events) = ModelI2c::new(serial);
+        let mut sensor = Sht45::new(i2c, NoopDelay);
+
+        assert_eq!(
+            block_on(sensor.read_serial_number()),
+            Ok(serial),
+            "word {word:#06x}"
+        );
+    }
+}
+
 #[test]
 fn public_measure_conforms_at_each_repeatability_frontier() {
     for (repeatability, expected_command, expected_delay_ns) in [
