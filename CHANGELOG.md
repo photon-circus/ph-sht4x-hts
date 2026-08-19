@@ -67,6 +67,17 @@
   reset is not exempt: it aborts a busy action under `SHT45-RST-ABORT-001`, but
   nothing declares that it discards a completed response.
 
+### Documentation
+
+- Restructured the model's fidelity declaration around the declared/injected/
+  abstracted/excluded/unsupported vocabulary and cited the retained proposition
+  identifier behind each modeled behavior and unsupported boundary. The driver
+  and conformance READMEs now cite the same identifiers and keep only their
+  local consequences instead of maintaining separate prose copies of the
+  command bytes and timing frontiers.
+- Declared that the model does not represent the serial command's execution
+  time as a busy frontier. That abstraction was previously unstated.
+
 ### Known issues
 
 - Model conformance covers every current public device operation; no operation

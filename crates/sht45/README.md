@@ -15,7 +15,29 @@ This package is not available from crates.io.
 
 ## Current state
 
-The package supports implementation-tested serial-number and one-shot T/RH reads, all six heater pulses, and soft reset for one SHT45-AD1B at 7-bit I2C address `0x44`. The serial read writes command `0x89`, waits at least 10 µs, reads six response bytes, validates both CRC-8 values, and returns the transmission-order `u32` serial number. A measurement writes `0xFD`, `0xF6`, or `0xE0` for high, medium, or low repeatability, waits the corresponding maximum duration of 8.3, 4.5, or 1.6 ms, then reads and validates six response bytes. A heater pulse selects high, medium, or low power and a long or short duration, writes the matching command, waits the complete 1.1083 s or 118.3 ms bound, and returns the heater's on-chip high-repeatability measurement. Soft reset writes `0x94`, waits 1 ms, and performs no response read. Measurement results are uncropped integer millidegrees Celsius and milli-%RH.
+The package supports implementation-tested serial-number and one-shot T/RH
+reads, all six heater pulses, and soft reset for one SHT45-AD1B device.
+
+Each device fact below is retained once, with exact provenance, as an
+identified proposition in the repository contract at `docs/CONTRACT.md`. This
+README cites those identifiers and states only what the driver does with them;
+it does not keep a second copy of the propositions or of their source
+coordinates.
+
+| Operation | Propositions consumed | What the driver does |
+| --- | --- | --- |
+| Addressing | `SHT45-I2C-ADDR-001` | Addresses one SHT45-AD1B at 7-bit `0x44`. There is no address parameter. |
+| `read_serial_number` | `SHT45-SN-CMD-001`, `SHT45-CRC-001` | Writes the command, waits its execution time, then reads six bytes in a separate transaction and returns the transmission-order `u32`. |
+| `measure` | `SHT45-MEAS-CMD-001`, `SHT45-MEAS-TIME-001`, `SHT45-MEAS-CONV-001` | Writes the repeatability-selected command, waits that repeatability's Table 5 **maximum** rather than its typical, then reads and converts six bytes. |
+| `heater_pulse` | `SHT45-HEAT-CMD-001`, `SHT45-HEAT-TIME-001`, `SHT45-HEAT-SEQ-001` | Writes the power- and duration-selected command, waits the complete pulse-plus-measurement bound, then reads one six-byte frame. |
+| `reset` | `SHT45-RST-CMD-001`, `SHT45-RST-TIME-001` | Writes the soft-reset command, waits the idle-time bound, and performs no response read. |
+| Every read frame | `SHT45-CRC-001` | Validates both CRC-8 bytes. A mismatch is an error and the driver does not retry. |
+
+Two consequences are worth stating plainly because they shape how the driver is
+called. Each operation blocks for its device-required wait, so a long heater
+pulse holds the future for over a second. Conversion results are uncropped
+integer millidegrees Celsius and milli-%RH, so a reading outside 0–100 %RH is
+reported rather than clamped.
 
 ## Platform support
 

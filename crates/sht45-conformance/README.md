@@ -9,19 +9,30 @@ Unpublished host-only conformance checks for public SHT45-AD1B operations.
 > serial-number read, T/RH measurement, heater pulse, and soft-reset
 > abort/recovery operations. They are not physical-device evidence.
 
+## What the checks compare
+
 The integration test adapts the driver's abstract async I2C calls to the
-independent model. It verifies the separate `0x89` write and six-byte read
-trace through the driver's public result using unequal serial words to
-discriminate transmission order, and exercises high, medium, and low
-measurement commands with model-relative timing, injected ticks, and
-adapter-corrupted CRC responses. The test independently asserts each public
-repeatability's exact command byte and maximum-delay frontier. Delay
-advancement is shared with the model; a no-op delay leaves the model busy and
-fails through the driver's public error path. Soft-reset coverage starts an
-in-flight measurement or long heater pulse, routes the driver's 1 ms delay into
-model time, and verifies serial recovery; a no-op reset delay remains visibly
-busy. Heater coverage exercises all six public power/duration selections with
-independently asserted command bytes and long/short waits, injected conversion
-ticks, adapter-corrupted CRC, and a no-op-delay discriminator.
+independent model and asserts through the driver's public surface. Device facts
+are cited by the identifiers retained in
+[`docs/CONTRACT.md`](../../docs/CONTRACT.md); this README records only what the
+comparison establishes.
+
+| Public operation | Propositions under comparison | Discriminating check |
+| --- | --- | --- |
+| `read_serial_number` | `SHT45-SN-CMD-001`, `SHT45-CRC-001` | Unequal serial words distinguish transmission order; an adapter-corrupted frame must surface as the driver's CRC error. |
+| `measure` | `SHT45-MEAS-CMD-001`, `SHT45-MEAS-TIME-001` | Each repeatability's command byte and maximum-delay frontier are asserted independently of the driver. |
+| `heater_pulse` | `SHT45-HEAT-CMD-001`, `SHT45-HEAT-TIME-001` | All six power and duration selections, each with its own asserted command byte and long or short wait. |
+| `reset` | `SHT45-RST-CMD-001`, `SHT45-RST-TIME-001`, `SHT45-RST-ABORT-001` | Reset aborts an in-flight measurement or long heater pulse, routes the driver's delay into model time, and recovers the serial. |
+
+Delay advancement is shared with the model, so the driver's requested wait is
+the input that moves the model's clock. A no-op delay provider therefore leaves
+the model busy and fails through the driver's public error path; those
+no-op cases are deliberate discriminators, not shortcuts.
+
+## What the checks do not establish
+
+Passing means the covered driver claims remain compatible with the declared
+model. It does not establish silicon behavior, physical timing, heater physics,
+or application duty-cycle policy.
 
 The adapter is test-only and is not compiled into either production library.
