@@ -37,8 +37,12 @@
   busy interval while preserving busy-write error precedence, without claiming
   driver conformance or physical evidence.
 - Retained source-backed SHT45 heater-pulse command, completion-bound, and
-  sequencing propositions for future driver and model work without claiming
-  heater implementation, conformance, or physical evidence.
+  sequencing propositions for bounded driver and model work without claiming
+  driver implementation, conformance, or physical evidence.
+- Added model-only behavior for all six SHT45 heater-pulse commands, including
+  explicit conversion ticks, exact long and short busy frontiers, one-shot CRC
+  frame consumption, soft-reset abort, and busy-write rejection, without
+  claiming driver conformance or physical evidence.
 - Added the implementation-tested public soft-reset operation, which writes
   `0x94`, waits 1 ms, performs no response read, and maps write NACK and bus
   errors without claiming model conformance or physical evidence.
