@@ -4,6 +4,14 @@
 
 ### Added
 
+- Retained the SHT45 heater-power proposition covering which of the six heater
+  command bytes selects which documented power level. The public API previously
+  exposed an ordinal power selection with no retained record of that fact at
+  all. The proposition is recorded as **unverified**: its figures have not been
+  read against the pinned datasheet, so the public `HeaterPower` documentation
+  names the command byte each variant selects and cites the proposition for the
+  power figures rather than asserting a wattage.
+
 - Initialized the bounded Sensirion SHT45 driver repository with an unpublished Incubating scaffold.
 - Retained the source-backed SHT45 serial-number propositions used to unblock
   later driver and model work, including the command execution timing for the
@@ -70,15 +78,6 @@
   commands, and measurements without injected ticks are still reported
   separately, because such a write commits nothing and so discards nothing.
 
-### Changed
-
-- The behavioral model now derives CRC-8 by reducing four bits per table lookup
-  rather than with the bit-at-a-time shift register the driver uses. The two
-  implementations were previously byte-identical, so an implementation defect
-  would have reproduced itself in the oracle and survived conformance
-  comparison. Model output is unchanged.
-
-### Added
 
 - Host-only conformance coverage sweeping all 65 536 sixteen-bit words through
   the model's response frame and the driver's CRC validation, establishing that
@@ -87,13 +86,19 @@
 
 ### Changed
 
+- The behavioral model now derives CRC-8 by reducing four bits per table lookup
+  rather than with the bit-at-a-time shift register the driver uses. The two
+  implementations were previously byte-identical, so an implementation defect
+  would have reproduced itself in the oracle and survived conformance
+  comparison. Model output is unchanged.
+
+
 - Moved the conformance package's `embedded-hal`, `embedded-hal-async`,
   `ph-sht45-hts`, and `ph-sht45-hts-model` dependencies from `[dependencies]` to
   `[dev-dependencies]`. Its library target contains no conformance code and uses
   none of them; only the integration test does. The dependency graph now states
   that the driver and the model meet in a test rather than in a library.
 
-### Changed
 
 - Replaced the driver's registry keywords with terms a reader would search for —
   `sht45`, `sensirion`, `humidity`, `i2c`, `embedded-hal-driver` — dropping

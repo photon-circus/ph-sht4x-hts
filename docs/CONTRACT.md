@@ -116,7 +116,25 @@ this repository. Older SHT4x PDF revisions are not co-authority.
   supported. Driver requirement: the public heater-pulse operation selects one
   command by power and duration and reads one six-byte response; the independent
   model accepts the six commands with explicit conversion ticks and independently
-  owns the response CRC frame.
+  owns the response CRC frame. Which byte carries which power level is recorded
+  separately as `SHT45-HEAT-PWR-001`.
+- `SHT45-HEAT-PWR-001` — Each heater command byte selects one of three
+  documented heater power levels, stated in the same Table 8 command
+  description that gives its pulse duration. The retained reading is that
+  `0x39` and `0x32` select 200 mW, `0x2F` and `0x24` select 110 mW, and `0x1E`
+  and `0x15` select 20 mW. Evidence state: **unverified** — that reading has not
+  been checked against the pinned PDF and its recorded SHA-256, so no retained
+  item decides this proposition. Missing evidence is not approval: until a
+  maintainer performs that read, neither the byte-to-power mapping nor its
+  descending order is established.
+  Driver requirement: `HeaterPower::High`, `HeaterPower::Medium`, and
+  `HeaterPower::Low` select the matching byte for either pulse duration, and
+  public documentation names the byte each variant selects while citing this
+  identifier for the power figures rather than asserting them.
+  Local consequence: no public surface may describe a `HeaterPower` variant as a
+  confirmed wattage while this proposition is unverified. Per
+  `SHT45-HEAT-SEQ-001`, delivered energy, duty-cycle limiting, and watt metering
+  remain outside this repository regardless.
 - `SHT45-HEAT-TIME-001` — The maximum heater time is 1.1 s for a long pulse and
   0.11 s for a short pulse, followed by the high-repeatability measurement
   maximum of 8.3 ms (`tHeater`, `tMEAS,h`, Table 5). Typical pulse widths and
