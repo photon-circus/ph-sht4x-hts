@@ -179,7 +179,9 @@ impl<I2C, DELAY> Sht45<I2C, DELAY> {
     /// than the surrounding air. How the two differ is heater physics, which this
     /// repository does not retain, model, bound, or correct. It shares the
     /// [`Measurement`] type with [`Sht45::measure`] and is not a substitute for
-    /// it. Use [`Sht45::measure`] for ambient temperature and humidity.
+    /// it: use [`Sht45::measure`] for a reading taken with the heater off. What
+    /// either reading implies about the surrounding air is a system-calibration
+    /// question this repository does not answer.
     ///
     /// The caller owns application-level heater policy, including pulse cadence and
     /// duty-cycle limiting. This operation owns the selected command's complete

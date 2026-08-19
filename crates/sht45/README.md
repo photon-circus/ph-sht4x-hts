@@ -26,7 +26,9 @@ model, bound, or correct.
 
 `heater_pulse` and `measure` share the `Measurement` type, so nothing in the
 type system prevents one being used where the other is meant. Use `measure` for
-ambient temperature and humidity.
+a reading taken with the heater off. What either reading implies about the
+surrounding air is a system-calibration question this repository does not
+answer.
 
 ## Platform support
 
