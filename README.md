@@ -21,13 +21,14 @@ It does not own board topology; concrete bus/GPIO/power resources; sampling cade
 - Transport: abstract async I2C and delay resources
 - Rust: `1.92.0` on the pinned `1.92.0` toolchain
 - Runtime posture: `no_std`, no allocation, and no unsafe code
-- Supported operations: implementation-tested serial-number read and one-shot
-  T/RH measurement at high, medium, or low repeatability over abstract async
-  I2C with the device-required command delays
+- Supported operations: implementation-tested serial-number read, one-shot T/RH
+  measurement at high, medium, or low repeatability, and soft reset over
+  abstract async I2C with the device-required command delays
 
 ## Quick start
 
-The crate provides implementation-tested serial-number and one-shot T/RH reads for one SHT45-AD1B device. See [the package README](crates/sht45/README.md).
+The crate provides implementation-tested serial-number and one-shot T/RH reads,
+plus soft reset, for one SHT45-AD1B device. See [the package README](crates/sht45/README.md).
 
 ## Evidence and limitations
 

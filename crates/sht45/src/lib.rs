@@ -11,6 +11,8 @@ const SERIAL_NUMBER_COMMAND: u8 = 0x89;
 const SERIAL_NUMBER_RESPONSE_LEN: usize = 6;
 const SERIAL_NUMBER_DURATION_US: u32 = 10;
 const MEASUREMENT_RESPONSE_LEN: usize = 6;
+const SOFT_RESET_COMMAND: u8 = 0x94;
+const SOFT_RESET_DURATION_US: u32 = 1_000;
 
 /// Errors returned by the SHT45 driver.
 #[derive(Debug, PartialEq, Eq)]
@@ -96,6 +98,22 @@ impl<I2C, DELAY> Sht45<I2C, DELAY> {
         }
 
         Ok((u32::from(word0) << 16) | u32::from(word1))
+    }
+
+    /// Perform a soft reset and wait for the device to return to idle.
+    pub async fn reset<E>(&mut self) -> Result<(), Error<E>>
+    where
+        I2C: I2c<Error = E>,
+        DELAY: DelayNs,
+        E: embedded_hal::i2c::Error,
+    {
+        self.i2c
+            .write(ADDRESS, &[SOFT_RESET_COMMAND])
+            .await
+            .map_err(map_i2c_error)?;
+
+        self.delay.delay_us(SOFT_RESET_DURATION_US).await;
+        Ok(())
     }
 
     /// Perform one temperature and relative-humidity measurement.
@@ -224,6 +242,7 @@ mod tests {
     struct FakeI2c {
         events: Rc<RefCell<Vec<Event>>>,
         response: [u8; 6],
+        write_error: Option<FakeError>,
         read_error: Option<FakeError>,
     }
 
@@ -243,6 +262,9 @@ mod tests {
                         self.events
                             .borrow_mut()
                             .push(Event::Write(address, bytes.to_vec()));
+                        if let Some(error) = self.write_error.take() {
+                            return Err(error);
+                        }
                     }
                     Operation::Read(bytes) => {
                         self.events
@@ -275,6 +297,7 @@ mod tests {
             FakeI2c {
                 events: Rc::clone(&events),
                 response,
+                write_error: None,
                 read_error: None,
             },
             FakeDelay {
@@ -382,6 +405,42 @@ mod tests {
                 Event::Read(ADDRESS, 6),
             ]
         );
+    }
+
+    #[test]
+    fn resets_with_one_write_and_one_millisecond_delay_without_reading() {
+        let (i2c, delay, events) = fake([0; 6]);
+        let mut sensor = Sht45::new(i2c, delay);
+
+        assert_eq!(block_on(sensor.reset()), Ok(()));
+        assert_eq!(
+            *events.borrow(),
+            vec![
+                Event::Write(ADDRESS, vec![SOFT_RESET_COMMAND]),
+                Event::DelayNs(1_000_000),
+            ]
+        );
+    }
+
+    #[test]
+    fn maps_reset_write_errors_without_delaying() {
+        for (write_error, expected) in [
+            (
+                FakeError::NoAcknowledge,
+                Error::NoAcknowledge(FakeError::NoAcknowledge),
+            ),
+            (FakeError::Bus, Error::I2c(FakeError::Bus)),
+        ] {
+            let (mut i2c, delay, events) = fake([0; 6]);
+            i2c.write_error = Some(write_error);
+            let mut sensor = Sht45::new(i2c, delay);
+
+            assert_eq!(block_on(sensor.reset()), Err(expected));
+            assert_eq!(
+                *events.borrow(),
+                vec![Event::Write(ADDRESS, vec![SOFT_RESET_COMMAND])]
+            );
+        }
     }
 
     #[test]
