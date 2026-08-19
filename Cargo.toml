@@ -1,0 +1,10 @@
+[workspace]
+resolver = "3"
+members = ["crates/sht45"]
+
+[workspace.package]
+authors = ["Steven Giacomelli"]
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/photon-circus/ph-sht45-hts"
+rust-version = "1.92.0"

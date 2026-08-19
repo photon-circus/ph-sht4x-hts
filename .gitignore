@@ -1,0 +1,8 @@
+/target/
+**/*.rs.bk
+.DS_Store
+Thumbs.db
+
+# Vendor source documents stay local unless redistribution is permitted.
+/docs/vendor/*
+!/docs/vendor/README.md
