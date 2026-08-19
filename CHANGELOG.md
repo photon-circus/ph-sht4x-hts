@@ -12,7 +12,8 @@
   including the device-required command delay, mandatory CRC validation, and
   distinct no-acknowledge errors.
 - Added an independent unpublished behavioral model for the idle SHT45 serial
-  readout, with explicit OTP input and model-only trace tests.
+  readout, with explicit OTP input, distinct command-frame errors, and model-only
+  trace tests.
 
 ### Known issues
 

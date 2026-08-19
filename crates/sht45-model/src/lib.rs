@@ -13,7 +13,9 @@ const RESPONSE_LEN: usize = 6;
 pub enum Error {
     /// The transaction addressed something other than the modeled device.
     WrongAddress { expected: u8, actual: u8 },
-    /// The write did not contain exactly the modeled command.
+    /// The command write did not contain exactly one byte.
+    InvalidWriteLength { expected: usize, actual: usize },
+    /// The one-byte write contained an unsupported command.
     UnsupportedCommand(u8),
     /// The response buffer was not exactly six bytes long.
     InvalidReadLength(usize),
@@ -44,10 +46,14 @@ impl Sht45Model {
                 actual: address,
             });
         }
-        if bytes != [SERIAL_NUMBER_COMMAND] {
-            return Err(Error::UnsupportedCommand(
-                bytes.first().copied().unwrap_or(0),
-            ));
+        if bytes.len() != 1 {
+            return Err(Error::InvalidWriteLength {
+                expected: 1,
+                actual: bytes.len(),
+            });
+        }
+        if bytes[0] != SERIAL_NUMBER_COMMAND {
+            return Err(Error::UnsupportedCommand(bytes[0]));
         }
         self.command_pending = true;
         Ok(())
@@ -152,6 +158,25 @@ mod tests {
         assert_eq!(
             model.read(ADDRESS, &mut [0; 5]),
             Err(Error::InvalidReadLength(5))
+        );
+    }
+
+    #[test]
+    fn reports_malformed_command_frames_distinctly() {
+        let mut model = Sht45Model::new(0xbeef_beef);
+        assert_eq!(
+            model.write(ADDRESS, &[]),
+            Err(Error::InvalidWriteLength {
+                expected: 1,
+                actual: 0,
+            })
+        );
+        assert_eq!(
+            model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND, 0x00]),
+            Err(Error::InvalidWriteLength {
+                expected: 1,
+                actual: 2,
+            })
         );
     }
 }

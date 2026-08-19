@@ -13,7 +13,8 @@ readout.
 Modeled: an idle SHT45-AD1B at 7-bit I2C address `0x44`, with an explicitly
 provided OTP serial, accepting a separate `0x89` write followed by a six-byte
 read. The response contains two big-endian serial words and their CRC-8 bytes;
-the serial can be read again after another command write.
+the serial can be read again after another command write. Malformed write
+lengths are reported separately from unsupported one-byte commands.
 
 Uncovered: every other SHT45 command, measurement and heater timing, reset,
 clock stretching, ambient physics, autonomous CRC corruption, and busy-state
