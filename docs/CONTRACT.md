@@ -19,7 +19,8 @@ Refine this list when implementation creates review-blocking invariants; do not 
 ## Sources and device propositions
 
 Retained propositions are limited to facts consumed by the implemented driver
-operations or the independent model's soft-reset behavior. They are supported by
+operations or the independent model's soft-reset and heater-pulse behavior. They
+are supported by
 Sensirion Datasheet SHT4x, D1 Version 7.3 (June 2026),
 `HT_DS_Datasheet_SHT4x_V7.3.pdf`,
 https://sensirion.com/media/documents/33FD6951/6A7C10A0/HT_DS_Datasheet_SHT4x_V7.3.pdf,
@@ -111,8 +112,9 @@ this repository. Older SHT4x PDF revisions are not co-authority.
   maximum of 8.3 ms (`tHeater`, `tMEAS,h`, Table 5). Typical pulse widths and
   watt figures are not completion bounds. Evidence state: supported. Local
   consequence: a future driver waits 1_108_300 µs or 118_300 µs before its
-  single six-byte read; a future model returns `Busy` before the corresponding
-  frontier.
+  single six-byte read; the independent model returns `Busy` before the
+  corresponding frontier and makes the injected six-byte frame available at
+  that frontier.
 - `SHT45-HEAT-SEQ-001` — The heater sequence is heater on, timer expiry,
   high-repeatability measurement while the heater remains on, heater off, then
   data availability; there is no dedicated heater-off command (§4.9). Evidence
