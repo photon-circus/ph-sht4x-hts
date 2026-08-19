@@ -64,6 +64,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ph-sht45-hts-conformance"
+version = "0.1.0-incubating.1"
+dependencies = [
+ "embedded-hal",
+ "embedded-hal-async",
+ "futures-lite",
+ "ph-sht45-hts",
+ "ph-sht45-hts-model",
+]
+
+[[package]]
 name = "ph-sht45-hts-model"
 version = "0.1.0-incubating.1"
 

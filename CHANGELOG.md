@@ -14,8 +14,12 @@
 - Added an independent unpublished behavioral model for the idle SHT45 serial
   readout, with explicit OTP input, distinct command-frame errors, and model-only
   trace tests.
+- Added an unpublished host-only conformance package that adapts the public
+  driver I2C trace to the independent model, verifies the unequal-word
+  `0x1234_5678` serial result and transmission order, and checks that a corrupted
+  response produces the driver's CRC error.
 
 ### Known issues
 
-- The serial-number read is not physically validated and has no model-conformance
-  evidence.
+- Model conformance covers only the serial-number read; all other operations are
+  uncovered, and the serial-number read is not physically validated.
