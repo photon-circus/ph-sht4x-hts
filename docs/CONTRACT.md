@@ -19,7 +19,8 @@ Refine this list when implementation creates review-blocking invariants; do not 
 ## Sources and device propositions
 
 Retained propositions are limited to facts consumed by the implemented
-serial-number read and T/RH measurement operation. They are supported by
+serial-number and T/RH measurement operations or retained to bound prospective
+soft-reset work. They are supported by
 Sensirion Datasheet SHT4x, D1 Version 7.3 (June 2026),
 `HT_DS_Datasheet_SHT4x_V7.3.pdf`,
 https://sensirion.com/media/documents/33FD6951/6A7C10A0/HT_DS_Datasheet_SHT4x_V7.3.pdf,
@@ -80,8 +81,24 @@ this repository. Older SHT4x PDF revisions are not co-authority.
   measurement ticks; a read while the device is busy before the maximum timing
   frontier is a device NACK under `SHT45-I2C-XFER-001`, while a second read
   without a new command is a model limitation rather than an invented payload
-  or NACK. A write while the measurement is busy is rejected as outside model
-  fidelity without replacing the pending measurement.
+  or NACK. The current model rejects every write while a measurement is busy as
+  outside model fidelity without replacing the pending measurement. A future
+  soft-reset model must implement the exception in `SHT45-RST-ABORT-001`.
+
+- `SHT45-RST-CMD-001` — Soft reset is command byte `0x94`; the device ACKs and
+  returns no CRC data payload (Table 8). Evidence state: supported.
+  Local consequence: a future driver reset operation writes `[0x94]` and does
+  not read a response payload.
+- `SHT45-RST-TIME-001` — After ACK of soft reset, the maximum time to idle is
+  1 ms (`tSR`, Table 5). The same bound is stated for general-call reset, which
+  this repository does not consume. Evidence state: supported. Local
+  consequence: a future driver reset operation waits 1000 µs after the ACK.
+- `SHT45-RST-ABORT-001` — Any command that triggers an action can be aborted by
+  soft reset (section 4.8). Evidence state: supported. Future model requirement:
+  accept `0x94` while measurement is busy, discard the pending measurement, and
+  remain busy for the 1 ms reset interval; reads before that interval NACK and
+  reads after it observe an idle device. Until that behavior is implemented,
+  soft reset remains outside the model's fidelity boundary.
 
 Add the smallest permanent proposition and exact provenance only when current
 implementation, model, conformance, physical evidence, or bug disposition
