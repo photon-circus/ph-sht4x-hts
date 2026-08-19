@@ -9,8 +9,8 @@ description = "Unpublished host-only conformance checks for public SHT45 operati
 repository.workspace = true
 readme = "README.md"
 publish = false
-keywords = ["embedded", "sht45", "conformance"]
-categories = ["embedded", "hardware-support"]
+# No `keywords` or `categories`: those fields classify a crate for a registry
+# this package does not enter.
 
 # The library target carries no conformance code; the integration test is the
 # whole package. Declaring the driver and the model here would put a runtime
