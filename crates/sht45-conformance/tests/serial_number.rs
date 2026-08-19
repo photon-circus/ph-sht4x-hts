@@ -2,7 +2,9 @@ use embedded_hal::i2c::{ErrorType, Operation, SevenBitAddress};
 use embedded_hal_async::{delay::DelayNs, i2c::I2c};
 use futures_lite::future::block_on;
 use ph_sht45_hts::{ADDRESS, Error as DriverError, Sht45};
-use ph_sht45_hts_model::{Error as ModelError, SERIAL_NUMBER_COMMAND, Sht45Model};
+use ph_sht45_hts_model::{
+    Error as ModelError, MEASURE_HIGH_COMMAND, SERIAL_NUMBER_COMMAND, Sht45Model,
+};
 use std::{cell::RefCell, rc::Rc, vec::Vec};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -227,4 +229,57 @@ fn public_measure_requires_delay_to_reach_the_model_frontier() {
         block_on(sensor.measure(ph_sht45_hts::Repeatability::High)),
         Err(DriverError::NoAcknowledge(_))
     ));
+}
+
+#[test]
+fn public_reset_aborts_an_in_flight_measurement_and_preserves_serial() {
+    let (mut i2c, delay, events) = ModelI2c::with_measurement_ticks(0x1234_5678, 0xbeef, 0xbeef);
+    let mut operations = [Operation::Write(&[MEASURE_HIGH_COMMAND])];
+    block_on(i2c.transaction(ADDRESS, &mut operations)).unwrap();
+    events.borrow_mut().clear();
+
+    let mut sensor = Sht45::new(i2c, delay);
+    assert_eq!(block_on(sensor.reset()), Ok(()));
+    assert_eq!(
+        *events.borrow(),
+        [
+            AdapterEvent::Write {
+                address: ADDRESS,
+                bytes: vec![ph_sht45_hts_model::SOFT_RESET_COMMAND],
+            },
+            AdapterEvent::DelayNs(1_000_000),
+        ]
+    );
+
+    assert_eq!(block_on(sensor.read_serial_number()), Ok(0x1234_5678));
+    assert_eq!(
+        &events.borrow()[2..],
+        [
+            AdapterEvent::Write {
+                address: ADDRESS,
+                bytes: vec![SERIAL_NUMBER_COMMAND],
+            },
+            AdapterEvent::DelayNs(10_000),
+            AdapterEvent::Read {
+                address: ADDRESS,
+                length: 6,
+            },
+        ]
+    );
+}
+
+#[test]
+fn public_reset_without_delay_does_not_fake_idle_recovery() {
+    let (mut i2c, _delay, _events) = ModelI2c::with_measurement_ticks(0x1234_5678, 0xbeef, 0xbeef);
+    let mut operations = [Operation::Write(&[MEASURE_HIGH_COMMAND])];
+    block_on(i2c.transaction(ADDRESS, &mut operations)).unwrap();
+
+    let mut sensor = Sht45::new(i2c, NoopDelay);
+    assert_eq!(block_on(sensor.reset()), Ok(()));
+    assert_eq!(
+        block_on(sensor.read_serial_number()),
+        Err(DriverError::I2c(AdapterError::Model(
+            ModelError::WriteWhileBusy,
+        )))
+    );
 }
