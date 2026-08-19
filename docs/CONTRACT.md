@@ -37,9 +37,9 @@ this repository. Older SHT4x PDF revisions are not co-authority.
   two 16-bit words, each followed by an 8-bit CRC; the response length
   including CRC is 6 bytes, and the command duration is 0.01 ms (Table 8,
   section 4.7). Evidence state: supported.
-  Local consequence: the driver issues `write([0x89])` followed by a separate
-  6-byte `read`, waiting at least 0.01 ms between them; `0x89` is not the I2C
-  read address byte.
+  Local consequence: the driver issues `write([0x89])`, waits at least 0.01 ms
+  through an abstract async delay resource, and then issues a separate 6-byte
+  `read`; `0x89` is not the I2C read address byte.
 - `SHT45-CRC-001` — For each 16-bit read word, CRC-8 uses polynomial `0x31`,
   initialization `0xFF`, no input/output reflection, and final XOR `0x00`;
   the example is `CRC(0xBEEF) = 0x92` (Table 7, section 4.4). Evidence state:
@@ -61,8 +61,9 @@ validation assignment.
 
 ## Evidence posture
 
-- Implementation-tested: inert scaffold and repository checks only; the
-  retained serial-number propositions do not establish device behavior.
+- Implementation-tested: serial-number read sequencing, response decoding, CRC
+  validation, and error mapping through a scripted abstract I2C fake. This does
+  not establish device behavior.
 - Model-conformant: none.
 - Physically observed: none.
 - Qualified: none.

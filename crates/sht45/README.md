@@ -1,11 +1,11 @@
 # ph-sht45-hts
 
-Incubating unpublished async no_std Rust driver for the Sensirion SHT45 humidity and temperature sensor over abstract I2C. No supported operations yet.
+Incubating unpublished async no_std Rust driver for the Sensirion SHT45 humidity and temperature sensor over abstract I2C.
 
 > [!WARNING]
 > **Lifecycle:** Incubating — bounded work intended to become a supported driver
 > **Distribution:** Unpublished; the candidate version is `0.1.0-incubating.1` and the manifest sets `publish = false`.
-> **Model conformance:** None. No public driver operation is claimed as model-conformant.
+> **Model conformance:** None. The serial-number read is implementation-tested only; no public driver operation is claimed as model-conformant.
 > **Physical evidence:** None. No reviewed physical-device evidence supports a physically observed or qualified claim.
 > Evidence and limitations apply only to named operations; publication does not imply hardware qualification.
 
@@ -15,11 +15,11 @@ This package is not available from crates.io.
 
 ## Current state
 
-The package is an inert scaffold. It exposes no supported device operations yet.
+The package supports an implementation-tested serial-number read for one SHT45-AD1B at 7-bit I2C address `0x44`. It writes command `0x89`, waits at least 10 µs, reads six response bytes, validates both CRC-8 values, and returns the transmission-order `u32` serial number.
 
 ## Platform support
 
-The crate is `no_std`. Transport, target, allocation, and unsafe-code guarantees will be stated when implementation establishes them.
+The crate is `no_std`, uses abstract `embedded-hal-async` I2C and delay resources, allocates no memory, and forbids unsafe code. The caller owns those resources, power-up timing, scheduling, retries, and recovery policy. The driver owns the serial command's execution wait. No model-conformance or physical-device claim is made.
 
 ## License
 
