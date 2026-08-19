@@ -38,8 +38,12 @@ for manifest in $manifests; do
         echo "failed: expected $package_name version $expected_version, found $actual_version" >&2
         exit 1
     fi
-    if ! grep -Eq '^publish[[:space:]]*=[[:space:]]*false' "$manifest"; then
-        echo "failed: $manifest must retain publish = false" >&2
+    # Read from [package], not the whole file: `publish = false` under another
+    # valid table such as [package.metadata.*] would satisfy a file-wide grep
+    # while cargo treats the package as publishable.
+    publish_setting="$(package_field "$manifest" publish)"
+    if [ "$publish_setting" != "false" ]; then
+        echo "failed: $manifest [package] must retain publish = false, found ${publish_setting:-no publish key}" >&2
         exit 1
     fi
 done
@@ -50,10 +54,15 @@ cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 echo "check: tests"
 cargo test --locked --workspace --all-features
 
+# A target list that could not be obtained is not evidence that the target is
+# absent, so it does not get to look like an ordinary skip.
 echo "check: supported target compilation"
 for target in $supported_targets; do
-    if command -v rustup >/dev/null 2>&1 &&
-        rustup target list --installed 2>/dev/null | grep -qx "$target"; then
+    if ! command -v rustup >/dev/null 2>&1; then
+        echo "skipped: target $target, rustup is unavailable"
+    elif ! installed_targets="$(rustup target list --installed 2>/dev/null)"; then
+        echo "indeterminate: target $target, the installed-target list could not be read"
+    elif printf '%s\n' "$installed_targets" | grep -qx "$target"; then
         cargo build --locked -p ph-sht45-hts --target "$target"
     else
         echo "skipped: target $target is not installed"
