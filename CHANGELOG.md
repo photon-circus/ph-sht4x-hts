@@ -71,7 +71,10 @@
   tree. `cargo package --list` exits successfully for a package whose source
   file has been excluded; construction does not. Over a dirty working tree the
   package checks cover that tree and print a notice saying so, so the gate stays
-  runnable over uncommitted work without silently changing what it verified.
+  runnable over uncommitted work without silently changing what it verified. An
+  unreadable repository status is treated the same as a dirty tree, since cargo
+  inspects the repository without the git CLI and would otherwise abort a gate
+  that could not check.
 - The declared version and publication lock now cover all three manifests
   instead of the driver alone, and are read from each `[package]` table rather
   than through `cargo pkgid`, which resolves through `Cargo.lock` and cannot see

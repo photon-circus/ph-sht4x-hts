@@ -58,9 +58,11 @@ committed `Cargo.lock` is the resolved dependency set rather than whatever
 resolves on the day. A check that cannot run reports itself as skipped; a
 skipped check is not a passed check.
 
-The gate runs over uncommitted work. When the tree is dirty the package checks
-cover the working tree instead of the committed one and say so; the release
-process runs from a clean checkout, where that notice cannot appear.
+The gate runs over uncommitted work. When the tree is dirty — or when its state
+cannot be read, because cargo inspects the repository without the git CLI — the
+package checks cover the working tree instead of the committed one and say so.
+The release process runs from a clean checkout with git present, where no such
+notice can appear.
 
 ## License
 

@@ -67,8 +67,17 @@ RUSTDOCFLAGS="-D warnings" cargo doc --locked --workspace --all-features --no-de
 # default for a release, but it would make the routine gate unrunnable over
 # ordinary uncommitted work, so fall back to the working tree and say so. The
 # release process runs from a clean checkout, where this notice cannot appear.
+# Cargo reads the repository directly rather than through the git CLI, so an
+# undetectable status is not a clean one: treat "cannot tell" the same as dirty
+# rather than letting the gate abort in an environment where it cannot check.
 package_flags=""
-if command -v git >/dev/null 2>&1 && [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+if ! command -v git >/dev/null 2>&1; then
+    echo "notice: git is unavailable; package checks cover the working tree"
+    package_flags="--allow-dirty"
+elif ! tree_status="$(git status --porcelain 2>/dev/null)"; then
+    echo "notice: repository status is unreadable; package checks cover the working tree"
+    package_flags="--allow-dirty"
+elif [ -n "$tree_status" ]; then
     echo "notice: working tree is dirty; package checks cover it, not the committed tree"
     package_flags="--allow-dirty"
 fi
