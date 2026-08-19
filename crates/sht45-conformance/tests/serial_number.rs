@@ -3,7 +3,7 @@ use embedded_hal_async::{delay::DelayNs, i2c::I2c};
 use futures_lite::future::block_on;
 use ph_sht45_hts::{ADDRESS, Error as DriverError, Sht45};
 use ph_sht45_hts_model::{Error as ModelError, SERIAL_NUMBER_COMMAND, Sht45Model};
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, vec::Vec};
 
 #[derive(Debug, PartialEq, Eq)]
 enum AdapterError {
@@ -23,36 +23,58 @@ impl embedded_hal::i2c::Error for AdapterError {
 }
 
 type SharedModel = Rc<RefCell<Sht45Model>>;
+type SharedEvents = Rc<RefCell<Vec<AdapterEvent>>>;
+
+#[derive(Debug, PartialEq, Eq)]
+enum AdapterEvent {
+    Write {
+        address: SevenBitAddress,
+        bytes: Vec<u8>,
+    },
+    Read {
+        address: SevenBitAddress,
+        length: usize,
+    },
+    DelayNs(u32),
+}
 
 struct ModelI2c {
     model: SharedModel,
+    events: SharedEvents,
     corrupt_crc: bool,
 }
 
 struct ModelDelay {
     model: SharedModel,
+    events: SharedEvents,
 }
 
 impl ModelI2c {
-    fn new(serial: u32) -> (Self, ModelDelay) {
+    fn new(serial: u32) -> (Self, ModelDelay, SharedEvents) {
         Self::with_model(Sht45Model::new(serial))
     }
 
-    fn with_measurement_ticks(serial: u32, temperature: u16, humidity: u16) -> (Self, ModelDelay) {
+    fn with_measurement_ticks(
+        serial: u32,
+        temperature: u16,
+        humidity: u16,
+    ) -> (Self, ModelDelay, SharedEvents) {
         Self::with_model(Sht45Model::new(serial).with_measurement_ticks(temperature, humidity))
     }
 
-    fn with_model(model: Sht45Model) -> (Self, ModelDelay) {
+    fn with_model(model: Sht45Model) -> (Self, ModelDelay, SharedEvents) {
         let model = Rc::new(RefCell::new(model));
-        Self {
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let i2c = Self {
             model: Rc::clone(&model),
+            events: Rc::clone(&events),
             corrupt_crc: false,
-        }
-        .into_parts(model)
-    }
-
-    fn into_parts(self, model: SharedModel) -> (Self, ModelDelay) {
-        (self, ModelDelay { model })
+        };
+        let delay = ModelDelay {
+            model,
+            events: Rc::clone(&events),
+        };
+        (i2c, delay, events)
     }
 
     fn corrupt_next_crc(&mut self) {
@@ -75,12 +97,21 @@ impl I2c for ModelI2c {
         }
 
         match &mut operations[0] {
-            Operation::Write(bytes) => self
-                .model
-                .borrow_mut()
-                .write(address, bytes)
-                .map_err(AdapterError::Model),
+            Operation::Write(bytes) => {
+                self.events.borrow_mut().push(AdapterEvent::Write {
+                    address,
+                    bytes: bytes.to_vec(),
+                });
+                self.model
+                    .borrow_mut()
+                    .write(address, bytes)
+                    .map_err(AdapterError::Model)
+            }
             Operation::Read(response) => {
+                self.events.borrow_mut().push(AdapterEvent::Read {
+                    address,
+                    length: response.len(),
+                });
                 self.model
                     .borrow_mut()
                     .read(address, response)
@@ -97,6 +128,7 @@ impl I2c for ModelI2c {
 
 impl DelayNs for ModelDelay {
     async fn delay_ns(&mut self, ns: u32) {
+        self.events.borrow_mut().push(AdapterEvent::DelayNs(ns));
         self.model.borrow_mut().advance_ns(u64::from(ns));
     }
 }
@@ -109,7 +141,7 @@ impl DelayNs for NoopDelay {
 
 #[test]
 fn public_serial_read_conforms_to_the_model_frame() {
-    let (i2c, _delay) = ModelI2c::new(0x1234_5678);
+    let (i2c, _delay, _events) = ModelI2c::new(0x1234_5678);
     let mut sensor = Sht45::new(i2c, NoopDelay);
 
     assert_eq!(block_on(sensor.read_serial_number()), Ok(0x1234_5678));
@@ -117,7 +149,7 @@ fn public_serial_read_conforms_to_the_model_frame() {
 
 #[test]
 fn public_serial_read_rejects_an_adapter_corrupted_model_frame() {
-    let (mut i2c, _delay) = ModelI2c::new(0xbeef_beef);
+    let (mut i2c, _delay, _events) = ModelI2c::new(0xbeef_beef);
     i2c.corrupt_next_crc();
     let mut sensor = Sht45::new(i2c, NoopDelay);
 
@@ -129,7 +161,7 @@ fn public_serial_read_rejects_an_adapter_corrupted_model_frame() {
 
 #[test]
 fn adapter_exposes_the_model_command_domain() {
-    let (mut i2c, _delay) = ModelI2c::new(0xbeef_beef);
+    let (mut i2c, _delay, _events) = ModelI2c::new(0xbeef_beef);
     let mut operations = [Operation::Write(&[SERIAL_NUMBER_COMMAND])];
 
     block_on(i2c.transaction(ADDRESS, &mut operations)).unwrap();
@@ -142,12 +174,12 @@ fn adapter_exposes_the_model_command_domain() {
 
 #[test]
 fn public_measure_conforms_at_each_repeatability_frontier() {
-    for repeatability in [
-        ph_sht45_hts::Repeatability::High,
-        ph_sht45_hts::Repeatability::Medium,
-        ph_sht45_hts::Repeatability::Low,
+    for (repeatability, expected_command, expected_delay_ns) in [
+        (ph_sht45_hts::Repeatability::High, 0xfd, 8_300_000),
+        (ph_sht45_hts::Repeatability::Medium, 0xf6, 4_500_000),
+        (ph_sht45_hts::Repeatability::Low, 0xe0, 1_600_000),
     ] {
-        let (i2c, delay) = ModelI2c::with_measurement_ticks(0, 0xbeef, 0xbeef);
+        let (i2c, delay, events) = ModelI2c::with_measurement_ticks(0, 0xbeef, 0xbeef);
         let mut sensor = Sht45::new(i2c, delay);
 
         assert_eq!(
@@ -157,12 +189,26 @@ fn public_measure_conforms_at_each_repeatability_frontier() {
                 rh_milli_pct: 87_230,
             })
         );
+        assert_eq!(
+            *events.borrow(),
+            [
+                AdapterEvent::Write {
+                    address: ADDRESS,
+                    bytes: vec![expected_command],
+                },
+                AdapterEvent::DelayNs(expected_delay_ns),
+                AdapterEvent::Read {
+                    address: ADDRESS,
+                    length: 6,
+                },
+            ]
+        );
     }
 }
 
 #[test]
 fn public_measure_rejects_an_adapter_corrupted_model_frame() {
-    let (mut i2c, delay) = ModelI2c::with_measurement_ticks(0, 0xbeef, 0xbeef);
+    let (mut i2c, delay, _events) = ModelI2c::with_measurement_ticks(0, 0xbeef, 0xbeef);
     i2c.corrupt_next_crc();
     let mut sensor = Sht45::new(i2c, delay);
 
@@ -174,7 +220,7 @@ fn public_measure_rejects_an_adapter_corrupted_model_frame() {
 
 #[test]
 fn public_measure_requires_delay_to_reach_the_model_frontier() {
-    let (i2c, _delay) = ModelI2c::with_measurement_ticks(0, 0xbeef, 0xbeef);
+    let (i2c, _delay, _events) = ModelI2c::with_measurement_ticks(0, 0xbeef, 0xbeef);
     let mut sensor = Sht45::new(i2c, NoopDelay);
 
     assert!(matches!(

@@ -95,7 +95,8 @@ validation assignment.
   through a scripted abstract I2C fake. This does not establish device behavior.
 - Model-conformant: serial-number read and T/RH measurement at high, medium,
   and low repeatability, through the unpublished host-only conformance
-  package's public driver/model adapter check. Other operations are uncovered.
+  package's public driver/model adapter check, with independently asserted
+  command and maximum-delay mappings. Other operations are uncovered.
 - Physically observed: none.
 - Qualified: none.
 

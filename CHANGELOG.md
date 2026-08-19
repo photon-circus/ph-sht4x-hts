@@ -27,7 +27,8 @@
   response produces the driver's CRC error.
 - Added host-only model conformance for high, medium, and low T/RH measurement,
   including shared relative-delay advancement, injected `0xBEEF` ticks,
-  adapter CRC corruption, and a busy-model check for a no-op delay.
+  independently asserted command and maximum-delay mappings, adapter CRC
+  corruption, and a busy-model check for a no-op delay.
 
 ### Known issues
 
