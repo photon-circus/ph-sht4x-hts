@@ -20,8 +20,8 @@ comparison establishes.
 | Public operation | Propositions under comparison | Discriminating check |
 | --- | --- | --- |
 | `read_serial_number` | `SHT45-SN-CMD-001`, `SHT45-CRC-001` | Unequal serial words distinguish transmission order; an adapter-corrupted frame must surface as the driver's CRC error. |
-| `measure` | `SHT45-MEAS-CMD-001`, `SHT45-MEAS-TIME-001` | Each repeatability's command byte and maximum-delay frontier are asserted independently of the driver. |
-| `heater_pulse` | `SHT45-HEAT-CMD-001`, `SHT45-HEAT-TIME-001` | All six power and duration selections, each with its own asserted command byte and long or short wait. |
+| `measure` | `SHT45-MEAS-CMD-001`, `SHT45-MEAS-TIME-001`, `SHT45-MEAS-CONV-001` | Each repeatability's command byte and maximum-delay frontier are asserted independently of the driver, and injected ticks are compared against the decoded public millidegree and milli-%RH result. |
+| `heater_pulse` | `SHT45-HEAT-CMD-001`, `SHT45-HEAT-TIME-001`, `SHT45-MEAS-CONV-001` | All six power and duration selections, each with its own asserted command byte and long or short wait, and the same injected-tick to decoded-result comparison. |
 | `reset` | `SHT45-RST-CMD-001`, `SHT45-RST-TIME-001`, `SHT45-RST-ABORT-001`, `SHT45-I2C-XFER-001` | Reset aborts an in-flight measurement or long heater pulse and routes the driver's delay into model time. Serial recovery afterwards rests on the OTP serial surviving, which is `SHT45-I2C-XFER-001`, not on the reset propositions. |
 
 Delay advancement is shared with the model, so the driver's requested wait is
