@@ -35,7 +35,7 @@ Model conformance covers the host-only serial-number and T/RH measure checks des
 
 See [the repository contract](docs/CONTRACT.md) for the current responsibility, invariants, evidence posture, and source handling.
 
-The independent model package is documented in [its README](crates/sht45-model/README.md). It covers selected serial-number and one-shot T/RH behavior; its existence is model-only evidence and does not establish driver conformance or silicon behavior.
+The independent model package is documented in [its README](crates/sht45-model/README.md). It covers selected serial-number and one-shot T/RH behavior plus model-only soft-reset abort behavior; its existence does not establish driver conformance or silicon behavior.
 
 ## Verification
 

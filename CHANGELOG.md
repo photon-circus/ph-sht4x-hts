@@ -32,6 +32,10 @@
 - Retained the source-backed SHT45 soft-reset command, 1 ms idle-time bound, and
   measurement-abort propositions from Datasheet D1 Version 7.3, without claiming
   reset implementation or model conformance.
+- Added model-only soft-reset behavior that aborts an in-flight measurement,
+  preserves the explicit OTP serial, and returns to idle after the 1 ms reset
+  busy interval while preserving busy-write error precedence, without claiming
+  driver conformance or physical evidence.
 
 ### Known issues
 
