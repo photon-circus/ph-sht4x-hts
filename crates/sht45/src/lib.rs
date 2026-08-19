@@ -172,9 +172,19 @@ impl<I2C, DELAY> Sht45<I2C, DELAY> {
 
     /// Run one heater pulse and return its on-chip high-repeatability measurement.
     ///
+    /// # The returned reading is not an ambient measurement
+    ///
+    /// Under `SHT45-HEAT-SEQ-001` the device converts *while the heater is still
+    /// on*, so the returned [`Measurement`] describes the heated sensor, not the
+    /// surrounding air: temperature reads high and relative humidity reads low by
+    /// an amount this driver does not model, bound, or correct. It shares the
+    /// [`Measurement`] type with [`Sht45::measure`] and is not a substitute for
+    /// it. Use [`Sht45::measure`] for ambient temperature and humidity.
+    ///
     /// The caller owns application-level heater policy, including pulse cadence and
     /// duty-cycle limiting. This operation owns the selected command's complete
-    /// device-required wait and response read.
+    /// device-required wait and response read, so it does not return until that
+    /// wait has elapsed — over one second for a long pulse.
     pub async fn heater_pulse<E>(
         &mut self,
         power: HeaterPower,

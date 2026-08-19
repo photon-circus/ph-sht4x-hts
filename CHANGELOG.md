@@ -60,6 +60,15 @@
   abort with serial recovery. This does not establish heater physics,
   application duty-cycle policy, or physical evidence.
 
+### Documentation
+
+- Disclosed that the measurement returned by a heater pulse is taken while the
+  heater is energized and therefore describes the heated sensor rather than
+  ambient conditions. It shares the `Measurement` type with the ambient read, so
+  nothing in the type system distinguishes them; the driver does not model,
+  bound, or correct the offset. Documented on the operation, in the package
+  README, and in the root README.
+
 ### Known issues
 
 - Model conformance covers every current public device operation; no operation
