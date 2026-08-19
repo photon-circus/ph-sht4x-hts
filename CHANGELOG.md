@@ -14,6 +14,9 @@
 - Added the implementation-tested serial-number read through abstract async I2C,
   including the device-required command delay, mandatory CRC validation, and
   distinct no-acknowledge errors.
+- Added implementation-tested high, medium, and low repeatability T/RH
+  measurement with Table 5 maximum delays, mandatory CRC validation, and
+  uncropped integer millidegree and milli-%RH conversion.
 - Added an independent unpublished behavioral model for the idle SHT45 serial
   readout, with explicit OTP input, distinct command-frame errors, and model-only
   trace tests.
