@@ -80,7 +80,8 @@ this repository. Older SHT4x PDF revisions are not co-authority.
   measurement ticks; a read while the device is busy before the maximum timing
   frontier is a device NACK under `SHT45-I2C-XFER-001`, while a second read
   without a new command is a model limitation rather than an invented payload
-  or NACK.
+  or NACK. A write while the measurement is busy is rejected as outside model
+  fidelity without replacing the pending measurement.
 
 Add the smallest permanent proposition and exact provenance only when current
 implementation, model, conformance, physical evidence, or bug disposition

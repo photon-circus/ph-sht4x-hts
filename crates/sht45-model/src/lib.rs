@@ -33,6 +33,8 @@ pub enum Error {
     ReadBeforeCommand,
     /// A measurement read was attempted before its maximum completion time.
     Busy,
+    /// A command write was attempted while a measurement was busy, outside model fidelity.
+    WriteWhileBusy,
     /// A measurement was requested without explicit conversion ticks.
     MissingMeasurementTicks,
     /// A completed measurement was already consumed or is otherwise unavailable.
@@ -99,6 +101,13 @@ impl Sht45Model {
                 expected: ADDRESS,
                 actual: address,
             });
+        }
+        if matches!(
+            self.pending,
+            Some(PendingCommand::Measurement { ready_at_ns, .. })
+                if self.elapsed_ns < ready_at_ns
+        ) {
+            return Err(Error::WriteWhileBusy);
         }
         if bytes.len() != 1 {
             return Err(Error::InvalidWriteLength {
@@ -250,6 +259,37 @@ mod tests {
         assert_eq!(
             model.read(ADDRESS, &mut response),
             Err(Error::MeasurementDataUnavailable)
+        );
+    }
+
+    #[test]
+    fn rejects_writes_while_busy_without_replacing_the_measurement() {
+        let mut model = Sht45Model::new(0).with_measurement_ticks(0x1234, 0x5678);
+        let mut response = [0; 6];
+
+        model.write(ADDRESS, &[MEASURE_HIGH_COMMAND]).unwrap();
+        model.advance_ns(4_000_000);
+        assert_eq!(
+            model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]),
+            Err(Error::WriteWhileBusy)
+        );
+        assert_eq!(
+            model.write(ADDRESS, &[MEASURE_LOW_COMMAND]),
+            Err(Error::WriteWhileBusy)
+        );
+
+        model.advance_ns(4_300_000);
+        model.read(ADDRESS, &mut response).unwrap();
+        assert_eq!(
+            response,
+            [
+                0x12,
+                0x34,
+                crc8([0x12, 0x34]),
+                0x56,
+                0x78,
+                crc8([0x56, 0x78]),
+            ]
         );
     }
 

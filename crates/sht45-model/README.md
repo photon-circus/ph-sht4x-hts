@@ -22,9 +22,12 @@ Malformed write lengths are reported separately from unsupported one-byte
 commands.
 
 Uncovered: every other SHT45 command, heater timing, reset, clock stretching,
-ambient physics, autonomous CRC corruption, and write-while-busy behavior. The
-model does not represent hidden wall time; callers advance relative time
-explicitly, and a busy measurement read is modeled as a device NACK.
+ambient physics, autonomous CRC corruption, and the device's response to writes
+while busy. The model does not represent hidden wall time; callers advance
+relative time explicitly, and a busy measurement read is modeled as a device
+NACK. Writes addressed to the modeled device while a measurement is busy return
+`WriteWhileBusy` as an explicit out-of-fidelity error and leave the pending
+measurement unchanged.
 
 The model exposes separate write and read operations, representing the
 two-STOP transaction domain. Combined `write_read` or repeated-start behavior
