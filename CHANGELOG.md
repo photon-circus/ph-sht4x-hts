@@ -42,9 +42,12 @@
 - Added the implementation-tested public soft-reset operation, which writes
   `0x94`, waits 1 ms, performs no response read, and maps write NACK and bus
   errors without claiming model conformance or physical evidence.
+- Added host-only public driver/model conformance coverage for soft-reset abort
+  of an in-flight measurement, the routed 1 ms delay, and serial recovery;
+  this does not establish physical reset timing or hardware evidence.
 
 ### Known issues
 
-- Model conformance covers serial-number read and T/RH measurement at all three
-  repeatabilities; other operations are uncovered, and no operation is
-  physically validated.
+- Model conformance covers serial-number read, T/RH measurement at all three
+  repeatabilities, and soft-reset abort/recovery; other operations are
+  uncovered, and no operation is physically validated.
