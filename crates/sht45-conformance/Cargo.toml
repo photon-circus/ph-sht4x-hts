@@ -12,11 +12,13 @@ publish = false
 keywords = ["embedded", "sht45", "conformance"]
 categories = ["embedded", "hardware-support"]
 
-[dependencies]
+# The library target carries no conformance code; the integration test is the
+# whole package. Declaring the driver and the model here would put a runtime
+# dependency edge on a library that uses neither, overstating the coupling that
+# the behavioral-model standard relies on being directly inspectable.
+[dev-dependencies]
 embedded-hal = "1.0"
 embedded-hal-async = "1.0"
+futures-lite = "2"
 ph-sht45-hts = { path = "../sht45" }
 ph-sht45-hts-model = { path = "../sht45-model" }
-
-[dev-dependencies]
-futures-lite = "2"
