@@ -60,6 +60,27 @@
   abort with serial recovery. This does not establish heater physics,
   application duty-cycle policy, or physical evidence.
 
+### Changed
+
+- The local gate now compiles the driver for the `thumbv7em-none-eabihf` and
+  `thumbv6m-none-eabi` bare-metal targets, reporting a distinct skip when a
+  target is not installed. A `no_std` driver was previously only ever compiled
+  for the host, which establishes nothing about the targets it exists to serve.
+- The local gate now constructs the driver's package archive rather than only
+  listing its contents, so cargo's verification build runs against the unpacked
+  tree. `cargo package --list` exits successfully for a package whose source
+  file has been excluded; construction does not.
+- The declared version and publication lock now cover all three manifests
+  instead of the driver alone, and are read from each `[package]` table rather
+  than through `cargo pkgid`, which resolves through `Cargo.lock` and cannot see
+  a manifest that has drifted from it.
+- Every cargo invocation in the gate now uses `--locked`, making the committed
+  `Cargo.lock` the resolved dependency set for verification.
+
+### Documentation
+
+- Recorded the verified bare-metal targets and what the local gate establishes.
+
 ### Known issues
 
 - Model conformance covers every current public device operation; no operation
