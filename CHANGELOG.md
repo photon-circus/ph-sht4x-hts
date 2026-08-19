@@ -54,9 +54,13 @@
   validation, integer T/RH readout, and distinct NACK/bus errors. Heater model
   conformance, application duty-cycle policy, and physical evidence remain
   unclaimed.
+- Added host-only public driver/model conformance for all six heater pulses,
+  including routed long/short delays, injected integer T/RH results, CRC
+  corruption discrimination, a no-op-delay busy check, and public soft-reset
+  abort with serial recovery. This does not establish heater physics,
+  application duty-cycle policy, or physical evidence.
 
 ### Known issues
 
-- Model conformance covers serial-number read, T/RH measurement at all three
-  repeatabilities, and soft-reset abort/recovery; other operations are
-  uncovered, and no operation is physically validated.
+- Model conformance covers every current public device operation; no operation
+  is physically validated.

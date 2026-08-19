@@ -6,7 +6,7 @@ The repository owns truthful supported SHT45 operations on one device through an
 
 ## Non-goals
 
-The repository does not own board topology; concrete bus/GPIO/power resources; sampling cadence; retry/escalation policy; heater application policy; SHT40/41/43 family claims; model conformance beyond the explicitly named host-only serial-number, T/RH, and soft-reset checks; or physical qualification.
+The repository does not own board topology; concrete bus/GPIO/power resources; sampling cadence; retry/escalation policy; heater application policy; SHT40/41/43 family claims; model conformance beyond the explicitly named host-only serial-number, T/RH, heater-pulse, and soft-reset checks; or physical qualification.
 
 ## Initial invariants
 
@@ -146,10 +146,10 @@ validation assignment.
   while preserving the explicit OTP serial. This does not establish driver
   conformance or device behavior.
 - Model-conformant: serial-number read, T/RH measurement at high, medium, and
-  low repeatability, and soft-reset abort/recovery, through the unpublished
-  host-only conformance package's public driver/model adapter check, with
-  independently asserted command and maximum-delay mappings. Other operations
-  are uncovered.
+  low repeatability, all six heater pulses, and soft-reset abort/recovery,
+  through the unpublished host-only conformance package's public driver/model
+  adapter check, with independently asserted command and maximum-delay
+  mappings. This covers every current public device operation.
 - Physically observed: none.
 - Qualified: none.
 
