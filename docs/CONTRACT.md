@@ -80,9 +80,9 @@ this repository. Older SHT4x PDF revisions are not co-authority.
   measurement ticks; a read while the device is busy before the maximum timing
   frontier is a device NACK under `SHT45-I2C-XFER-001`, while a second read
   without a new command is a model limitation rather than an invented payload
-  or NACK. The model rejects writes while a measurement is busy as outside
-  model fidelity without replacing the pending measurement, except that the
-  soft reset in `SHT45-RST-ABORT-001` aborts it and begins reset timing.
+  or NACK. The model rejects writes while a measurement or heater action is
+  busy as outside model fidelity without replacing pending data, except that
+  the soft reset in `SHT45-RST-ABORT-001` aborts it and begins reset timing.
 
 - `SHT45-RST-CMD-001` — Soft reset is command byte `0x94`; the device ACKs and
   returns no CRC data payload (Table 8). Evidence state: supported.
@@ -90,8 +90,8 @@ this repository. Older SHT4x PDF revisions are not co-authority.
   response payload.
 - `SHT45-RST-TIME-001` — After ACK of soft reset, the maximum time to idle is
   1 ms (`tSR`, Table 5). The same bound is stated for general-call reset, which
-  this repository does not consume. Evidence state: supported. Local
-  Driver requirement: the reset operation waits 1000 µs after the ACK.
+  this repository does not consume. Evidence state: supported. Driver
+  requirement: the reset operation waits 1000 µs after the ACK.
 - `SHT45-RST-ABORT-001` — Any command that triggers an action can be aborted by
   soft reset (section 4.8). Evidence state: supported. Model requirement: accept
   `0x94` while measurement is busy, discard the pending measurement, and remain
@@ -99,9 +99,34 @@ this repository. Older SHT4x PDF revisions are not co-authority.
   after it observe an idle device. The independent model implements this
   reset/abort trace; this is not driver-conformance or physical evidence.
 
+- `SHT45-HEAT-CMD-001` — The six heater-on commands are `0x39`, `0x2F`, and
+  `0x1E` for long pulses, and `0x32`, `0x24`, and `0x15` for short pulses.
+  Each returns the same six-byte high-repeatability temperature/relative-
+  humidity frame with one CRC byte per 16-bit word (Table 8). Evidence state:
+  supported. Local consequence: a future driver selects one command and reads
+  one six-byte response; a future model uses explicit conversion ticks and
+  independently owns the response CRC frame.
+- `SHT45-HEAT-TIME-001` — The maximum heater time is 1.1 s for a long pulse and
+  0.11 s for a short pulse, followed by the high-repeatability measurement
+  maximum of 8.3 ms (`tHeater`, `tMEAS,h`, Table 5). Typical pulse widths and
+  watt figures are not completion bounds. Evidence state: supported. Local
+  consequence: a future driver waits 1_108_300 µs or 118_300 µs before its
+  single six-byte read; a future model returns `Busy` before the corresponding
+  frontier.
+- `SHT45-HEAT-SEQ-001` — The heater sequence is heater on, timer expiry,
+  high-repeatability measurement while the heater remains on, heater off, then
+  data availability; there is no dedicated heater-off command (§4.9). Evidence
+  state: supported. Local consequence: heater application policy, duty-cycle
+  limiting, and watt metering remain outside this repository; soft reset
+  aborts heater activity through `SHT45-RST-ABORT-001`, and other writes while
+  heater-busy remain outside model fidelity.
+
 Add the smallest permanent proposition and exact provenance only when current
-implementation, model, conformance, physical evidence, or bug disposition
-consumes it. Missing evidence remains undefined and creates no claim or
+implementation, model, conformance, physical evidence, an approved
+evidence/decision work item, or bug disposition consumes it. Evidence/decision
+work must bound the retained propositions, name the dependent work they enable,
+and preserve explicit implementation, conformance, and physical-evidence
+non-claims. Missing evidence remains undefined and creates no claim or
 validation assignment.
 
 ## Evidence posture

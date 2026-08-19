@@ -36,6 +36,9 @@
   preserves the explicit OTP serial, and returns to idle after the 1 ms reset
   busy interval while preserving busy-write error precedence, without claiming
   driver conformance or physical evidence.
+- Retained source-backed SHT45 heater-pulse command, completion-bound, and
+  sequencing propositions for future driver and model work without claiming
+  heater implementation, conformance, or physical evidence.
 - Added the implementation-tested public soft-reset operation, which writes
   `0x94`, waits 1 ms, performs no response read, and maps write NACK and bus
   errors without claiming model conformance or physical evidence.
