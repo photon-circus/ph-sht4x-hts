@@ -14,15 +14,19 @@ pub const MEASURE_MEDIUM_COMMAND: u8 = 0xf6;
 pub const MEASURE_LOW_COMMAND: u8 = 0xe0;
 /// The modeled soft-reset command byte.
 pub const SOFT_RESET_COMMAND: u8 = 0x94;
-/// The modeled long heater command bytes, ordered 200 mW, 110 mW, 20 mW.
+/// The modeled long heater command bytes, in the order `SHT45-HEAT-PWR-001`
+/// reads as descending power.
 ///
-/// The power each byte selects is recorded as `SHT45-HEAT-PWR-001`; this array
-/// carries that order so a consumer can index it by power level.
+/// That proposition is unverified, so the order is the retained reading rather
+/// than an established device fact. The model's behavior does not depend on it;
+/// it accepts all three bytes identically.
 pub const HEATER_LONG_COMMANDS: [u8; 3] = [0x39, 0x2f, 0x1e];
-/// The modeled short heater command bytes, ordered 200 mW, 110 mW, 20 mW.
+/// The modeled short heater command bytes, in the order `SHT45-HEAT-PWR-001`
+/// reads as descending power.
 ///
-/// The power each byte selects is recorded as `SHT45-HEAT-PWR-001`; this array
-/// carries that order so a consumer can index it by power level.
+/// That proposition is unverified, so the order is the retained reading rather
+/// than an established device fact. The model's behavior does not depend on it;
+/// it accepts all three bytes identically.
 pub const HEATER_SHORT_COMMANDS: [u8; 3] = [0x32, 0x24, 0x15];
 const RESPONSE_LEN: usize = 6;
 
