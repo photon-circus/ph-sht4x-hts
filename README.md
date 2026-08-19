@@ -5,7 +5,7 @@ Incubating unpublished async no_std Rust driver for the Sensirion SHT45 humidity
 > [!WARNING]
 > **Lifecycle:** Incubating — bounded work intended to become a supported driver
 > **Distribution:** Unpublished; the candidate version is `0.1.0-incubating.1` and the manifest sets `publish = false`.
-> **Model conformance:** None. An independent unpublished model covers the idle serial-number trace only; the driver remains implementation-tested and no public driver operation is claimed as model-conformant.
+> **Model conformance:** Serial-number read only. An unpublished host-only conformance check compares the public driver result with an independent model's idle serial-number trace; other operations remain uncovered.
 > **Physical evidence:** None. No reviewed physical-device evidence supports a physically observed or qualified claim.
 > Evidence and limitations apply only to named operations; publication does not imply hardware qualification.
 

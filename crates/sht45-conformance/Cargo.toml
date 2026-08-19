@@ -1,0 +1,22 @@
+[package]
+name = "ph-sht45-hts-conformance"
+version = "0.1.0-incubating.1"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+description = "Unpublished host-only conformance checks for the SHT45 serial-number read."
+repository.workspace = true
+readme = "README.md"
+publish = false
+keywords = ["embedded", "sht45", "conformance"]
+categories = ["embedded", "hardware-support"]
+
+[dependencies]
+embedded-hal = "1.0"
+embedded-hal-async = "1.0"
+ph-sht45-hts = { path = "../sht45" }
+ph-sht45-hts-model = { path = "../sht45-model" }
+
+[dev-dependencies]
+futures-lite = "2"

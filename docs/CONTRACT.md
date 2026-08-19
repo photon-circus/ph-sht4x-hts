@@ -64,7 +64,9 @@ validation assignment.
 - Implementation-tested: serial-number read sequencing, response decoding, CRC
   validation, and error mapping through a scripted abstract I2C fake. This does
   not establish device behavior.
-- Model-conformant: none.
+- Model-conformant: serial-number read only, through the unpublished host-only
+  conformance package's public driver/model adapter check. Other operations are
+  uncovered.
 - Physically observed: none.
 - Qualified: none.
 
