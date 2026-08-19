@@ -29,6 +29,9 @@
   including shared relative-delay advancement, injected `0xBEEF` ticks,
   independently asserted command and maximum-delay mappings, adapter CRC
   corruption, and a busy-model check for a no-op delay.
+- Retained the source-backed SHT45 soft-reset command, 1 ms idle-time bound, and
+  measurement-abort propositions from Datasheet D1 Version 7.3, without claiming
+  reset implementation or model conformance.
 
 ### Known issues
 

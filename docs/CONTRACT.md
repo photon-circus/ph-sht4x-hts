@@ -81,7 +81,23 @@ this repository. Older SHT4x PDF revisions are not co-authority.
   frontier is a device NACK under `SHT45-I2C-XFER-001`, while a second read
   without a new command is a model limitation rather than an invented payload
   or NACK. A write while the measurement is busy is rejected as outside model
-  fidelity without replacing the pending measurement.
+  fidelity without replacing the pending measurement, except for soft reset
+  (`SHT45-RST-ABORT-001`), which aborts the pending measurement.
+
+- `SHT45-RST-CMD-001` — Soft reset is command byte `0x94`; the device ACKs and
+  returns no CRC data payload (Table 8). Evidence state: supported.
+  Local consequence: a future driver reset operation writes `[0x94]` and does
+  not read a response payload.
+- `SHT45-RST-TIME-001` — After ACK of soft reset, the maximum time to idle is
+  1 ms (`tSR`, Table 5). The same bound is stated for general-call reset, which
+  this repository does not consume. Evidence state: supported. Local
+  consequence: a future driver reset operation waits 1000 µs after the ACK.
+- `SHT45-RST-ABORT-001` — Any command that triggers an action can be aborted by
+  soft reset (section 4.8). Evidence state: supported. Local consequence: the
+  model may accept `0x94` while measurement is busy, discard the pending
+  measurement, and remain busy for the 1 ms reset interval; reads before that
+  interval NACK and reads after it observe an idle device. Soft reset is not
+  included in the model's out-of-fidelity set for writes while measuring.
 
 Add the smallest permanent proposition and exact provenance only when current
 implementation, model, conformance, physical evidence, or bug disposition
