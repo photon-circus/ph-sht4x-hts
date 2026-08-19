@@ -185,8 +185,10 @@ impl<I2C, DELAY> Sht45<I2C, DELAY> {
     ///
     /// The caller owns application-level heater policy, including pulse cadence and
     /// duty-cycle limiting. This operation owns the selected command's complete
-    /// device-required wait and response read, so it does not return until that
-    /// wait has elapsed — over one second for a long pulse.
+    /// device-required wait and response read: once the command write is
+    /// acknowledged it does not return until that wait has elapsed — over one
+    /// second for a long pulse. A write that fails returns immediately, without
+    /// waiting or reading.
     pub async fn heater_pulse<E>(
         &mut self,
         power: HeaterPower,
