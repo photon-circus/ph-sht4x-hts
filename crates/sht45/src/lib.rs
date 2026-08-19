@@ -1,5 +1,6 @@
 #![no_std]
 #![forbid(unsafe_code)]
+#![deny(missing_docs)]
 #![doc = include_str!("../README.md")]
 
 use embedded_hal_async::{delay::DelayNs, i2c::I2c};
@@ -8,27 +9,80 @@ use embedded_hal_async::{delay::DelayNs, i2c::I2c};
 pub const ADDRESS: u8 = 0x44;
 
 const SERIAL_NUMBER_COMMAND: u8 = 0x89;
-const SERIAL_NUMBER_RESPONSE_LEN: usize = 6;
 const SERIAL_NUMBER_DURATION_US: u32 = 10;
-const MEASUREMENT_RESPONSE_LEN: usize = 6;
+// Every response this driver reads is the same shape: two big-endian 16-bit
+// words, each followed by its CRC-8 byte.
+const RESPONSE_LEN: usize = 6;
 const SOFT_RESET_COMMAND: u8 = 0x94;
 const SOFT_RESET_DURATION_US: u32 = 1_000;
-const HEATER_LONG_DURATION_US: u32 = 1_108_300;
-const HEATER_SHORT_DURATION_US: u32 = 118_300;
+// Each heater bound is the pulse itself plus the high-repeatability
+// measurement that runs before the data is available, per `SHT45-HEAT-TIME-001`
+// and `SHT45-HEAT-SEQ-001`. Dropping the trailing 8_300 would read the frame
+// before the device has it.
+const HEATER_LONG_DURATION_US: u32 = 1_100_000 + MEASUREMENT_HIGH_DURATION_US;
+const HEATER_SHORT_DURATION_US: u32 = 110_000 + MEASUREMENT_HIGH_DURATION_US;
+const MEASUREMENT_HIGH_DURATION_US: u32 = 8_300;
+const MEASUREMENT_MEDIUM_DURATION_US: u32 = 4_500;
+const MEASUREMENT_LOW_DURATION_US: u32 = 1_600;
 
 /// Errors returned by the SHT45 driver.
 #[derive(Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Error<E> {
     /// The device or bus rejected the transfer for a reason other than NACK.
     I2c(E),
     /// The device was not ready or otherwise did not acknowledge the transfer.
+    ///
+    /// Per `SHT45-I2C-XFER-001` the device NACKs a read header while it is
+    /// busy, so this is the expected result of reading before the operation's
+    /// required wait has elapsed. The driver does not retry.
     NoAcknowledge(E),
     /// One of the two response words failed its CRC check.
+    ///
+    /// The driver does not retry a failed CRC, per `SHT45-CRC-001`.
     Crc {
+        /// Which of the two 16-bit response words failed: `0` or `1`.
+        ///
+        /// For a measurement or heater pulse, word `0` is temperature and word
+        /// `1` is relative humidity. For a serial-number read they are the
+        /// high and low halves of the serial in transmission order.
         word: usize,
+        /// The CRC-8 computed over the received word.
         expected: u8,
+        /// The CRC-8 byte the device sent.
         actual: u8,
     },
+}
+
+impl<E: core::fmt::Display> core::fmt::Display for Error<E> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::I2c(error) => write!(f, "I2C transfer failed: {error}"),
+            Self::NoAcknowledge(error) => {
+                write!(f, "device did not acknowledge the transfer: {error}")
+            }
+            Self::Crc {
+                word,
+                expected,
+                actual,
+            } => write!(
+                f,
+                "CRC mismatch on response word {word}: computed {expected:#04x}, received {actual:#04x}"
+            ),
+        }
+    }
+}
+
+impl<E> core::error::Error for Error<E>
+where
+    E: core::error::Error + 'static,
+{
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        match self {
+            Self::I2c(error) | Self::NoAcknowledge(error) => Some(error),
+            Self::Crc { .. } => None,
+        }
+    }
 }
 
 /// Measurement repeatability supported by the SHT45.
@@ -107,29 +161,14 @@ impl<I2C, DELAY> Sht45<I2C, DELAY> {
 
         self.delay.delay_us(SERIAL_NUMBER_DURATION_US).await;
 
-        let mut response = [0; SERIAL_NUMBER_RESPONSE_LEN];
+        let mut response = [0; RESPONSE_LEN];
         self.i2c
             .read(ADDRESS, &mut response)
             .await
             .map_err(map_i2c_error)?;
 
-        let word0 = u16::from_be_bytes([response[0], response[1]]);
-        let word1 = u16::from_be_bytes([response[3], response[4]]);
-        for (word, (value, actual)) in [(word0, response[2]), (word1, response[5])]
-            .into_iter()
-            .enumerate()
-        {
-            let expected = crc8(value.to_be_bytes());
-            if expected != actual {
-                return Err(Error::Crc {
-                    word,
-                    expected,
-                    actual,
-                });
-            }
-        }
-
-        Ok((u32::from(word0) << 16) | u32::from(word1))
+        let (high, low) = decode_words(response)?;
+        Ok((u32::from(high) << 16) | u32::from(low))
     }
 
     /// Perform a soft reset and wait for the device to return to idle.
@@ -159,9 +198,9 @@ impl<I2C, DELAY> Sht45<I2C, DELAY> {
         E: embedded_hal::i2c::Error,
     {
         let (command, duration_us) = match repeatability {
-            Repeatability::High => (0xfd, 8_300),
-            Repeatability::Medium => (0xf6, 4_500),
-            Repeatability::Low => (0xe0, 1_600),
+            Repeatability::High => (0xfd, MEASUREMENT_HIGH_DURATION_US),
+            Repeatability::Medium => (0xf6, MEASUREMENT_MEDIUM_DURATION_US),
+            Repeatability::Low => (0xe0, MEASUREMENT_LOW_DURATION_US),
         };
 
         self.i2c
@@ -171,7 +210,7 @@ impl<I2C, DELAY> Sht45<I2C, DELAY> {
 
         self.delay.delay_us(duration_us).await;
 
-        let mut response = [0; MEASUREMENT_RESPONSE_LEN];
+        let mut response = [0; RESPONSE_LEN];
         self.i2c
             .read(ADDRESS, &mut response)
             .await
@@ -225,7 +264,7 @@ impl<I2C, DELAY> Sht45<I2C, DELAY> {
 
         self.delay.delay_us(duration_us).await;
 
-        let mut response = [0; MEASUREMENT_RESPONSE_LEN];
+        let mut response = [0; RESPONSE_LEN];
         self.i2c
             .read(ADDRESS, &mut response)
             .await
@@ -273,12 +312,15 @@ fn convert_humidity(ticks: u16) -> i32 {
     -6_000 + (125_000_i64 * i64::from(ticks) / 65_535) as i32
 }
 
-fn decode_measurement<E>(
-    response: [u8; MEASUREMENT_RESPONSE_LEN],
-) -> Result<Measurement, Error<E>> {
-    let temperature = u16::from_be_bytes([response[0], response[1]]);
-    let humidity = u16::from_be_bytes([response[3], response[4]]);
-    for (word, (value, actual)) in [(temperature, response[2]), (humidity, response[5])]
+/// Validate both CRC-8 bytes and return the two 16-bit words in transmission
+/// order.
+///
+/// Serial-number and measurement responses share this frame shape, so they
+/// share this decode. A CRC failure names the word it failed on.
+fn decode_words<E>(response: [u8; RESPONSE_LEN]) -> Result<(u16, u16), Error<E>> {
+    let first = u16::from_be_bytes([response[0], response[1]]);
+    let second = u16::from_be_bytes([response[3], response[4]]);
+    for (word, (value, actual)) in [(first, response[2]), (second, response[5])]
         .into_iter()
         .enumerate()
     {
@@ -292,6 +334,11 @@ fn decode_measurement<E>(
         }
     }
 
+    Ok((first, second))
+}
+
+fn decode_measurement<E>(response: [u8; RESPONSE_LEN]) -> Result<Measurement, Error<E>> {
+    let (temperature, humidity) = decode_words(response)?;
     Ok(Measurement {
         t_mdeg_c: convert_temperature(temperature),
         rh_milli_pct: convert_humidity(humidity),
@@ -312,6 +359,17 @@ mod tests {
         NoAcknowledge,
         Bus,
     }
+
+    impl core::fmt::Display for FakeError {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            match self {
+                Self::NoAcknowledge => f.write_str("device did not acknowledge"),
+                Self::Bus => f.write_str("bus error"),
+            }
+        }
+    }
+
+    impl core::error::Error for FakeError {}
 
     impl embedded_hal::i2c::Error for FakeError {
         fn kind(&self) -> embedded_hal::i2c::ErrorKind {
@@ -397,6 +455,49 @@ mod tests {
             },
             events,
         )
+    }
+
+    #[test]
+    fn errors_render_the_detail_a_caller_needs() {
+        use std::string::ToString;
+
+        assert_eq!(
+            Error::<FakeError>::Crc {
+                word: 1,
+                expected: 0x92,
+                actual: 0x93,
+            }
+            .to_string(),
+            "CRC mismatch on response word 1: computed 0x92, received 0x93"
+        );
+        assert_eq!(
+            Error::NoAcknowledge(FakeError::NoAcknowledge).to_string(),
+            "device did not acknowledge the transfer: device did not acknowledge"
+        );
+        assert_eq!(
+            Error::I2c(FakeError::Bus).to_string(),
+            "I2C transfer failed: bus error"
+        );
+    }
+
+    #[test]
+    fn transport_errors_are_reachable_as_a_source() {
+        use core::error::Error as _;
+
+        assert!(
+            Error::I2c(FakeError::Bus)
+                .source()
+                .is_some_and(|source| source.is::<FakeError>())
+        );
+        assert!(
+            Error::<FakeError>::Crc {
+                word: 0,
+                expected: 0,
+                actual: 1,
+            }
+            .source()
+            .is_none()
+        );
     }
 
     #[test]
