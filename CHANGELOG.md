@@ -59,6 +59,11 @@
   corruption discrimination, a no-op-delay busy check, and public soft-reset
   abort with serial recovery. This does not establish heater physics,
   application duty-cycle policy, or physical evidence.
+- Retained the source-backed SHT45 heater-power proposition binding each of the
+  six heater command bytes to the 200 mW, 110 mW, or 20 mW level it selects, and
+  named those levels on the public `HeaterPower` variants. The public API
+  previously exposed an ordinal power selection with no retained provenance for
+  which byte carried which level.
 
 ### Known issues
 

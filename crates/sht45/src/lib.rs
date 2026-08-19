@@ -43,13 +43,18 @@ pub enum Repeatability {
 }
 
 /// Heater power selected for one bounded heater pulse.
+///
+/// The three levels are the documented heater powers recorded as
+/// `SHT45-HEAT-PWR-001`. The driver selects the matching command byte; it does
+/// not meter delivered energy or limit duty cycle, which stay with the caller
+/// under `SHT45-HEAT-SEQ-001`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HeaterPower {
-    /// High-power heater pulse.
+    /// 200 mW heater pulse: command `0x39` when long, `0x32` when short.
     High,
-    /// Medium-power heater pulse.
+    /// 110 mW heater pulse: command `0x2F` when long, `0x24` when short.
     Medium,
-    /// Low-power heater pulse.
+    /// 20 mW heater pulse: command `0x1E` when long, `0x15` when short.
     Low,
 }
 
