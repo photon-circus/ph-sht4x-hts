@@ -122,8 +122,11 @@ this repository. Older SHT4x PDF revisions are not co-authority.
   heater-busy remain outside model fidelity.
 
 Add the smallest permanent proposition and exact provenance only when current
-implementation, model, conformance, physical evidence, or bug disposition
-consumes it. Missing evidence remains undefined and creates no claim or
+implementation, model, conformance, physical evidence, an approved
+evidence/decision work item, or bug disposition consumes it. Evidence/decision
+work must bound the retained propositions, name the dependent work they enable,
+and preserve explicit implementation, conformance, and physical-evidence
+non-claims. Missing evidence remains undefined and creates no claim or
 validation assignment.
 
 ## Evidence posture
