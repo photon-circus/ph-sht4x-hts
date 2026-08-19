@@ -1,7 +1,7 @@
 # ph-sht45-hts-model
 
-Unpublished independent behavioral model for selected SHT45-AD1B serial-number
-and one-shot T/RH operations, including soft-reset abort behavior.
+Unpublished independent behavioral model for selected SHT45-AD1B serial-number,
+one-shot T/RH, and heater-pulse operations, including soft-reset abort behavior.
 
 > [!WARNING]
 > **Lifecycle:** Incubating. This package is unpublished and sets `publish = false`.
@@ -18,16 +18,20 @@ can be read again after another command write. Measurement accepts `0xFD`,
 `0xF6`, and `0xE0` for high, medium, and low repeatability, respectively. It
 models each command's maximum busy duration, the six-byte CRC response at or
 after that frontier, and deletion after the first successful measurement read.
-Malformed write lengths are reported separately from unsupported one-byte
-commands. Soft reset accepts command `0x94`, aborts a pending measurement, and
-keeps the device busy for 1 ms before returning to idle.
+The six heater commands are accepted with long or short maximum busy frontiers
+of 1.1083 s or 118.3 ms, respectively, and return the same injected six-byte
+CRC frame with one-shot deletion. Malformed write lengths are reported
+separately from unsupported one-byte commands. Soft reset accepts command
+`0x94`, aborts a pending measurement or heater pulse, and keeps the device busy
+for 1 ms before returning to idle.
 
-Uncovered: every other SHT45 command, heater timing, general-call reset, clock
-stretching, ambient physics, autonomous CRC corruption, and the device's
-response to writes while busy apart from soft-reset abort. The model does not
+Uncovered: every other SHT45 command, heater duty-cycle policy and physics,
+general-call reset, clock stretching, ambient physics, autonomous CRC
+corruption, and the device's response to writes while busy apart from
+soft-reset abort. The model does not
 represent hidden wall time; callers advance relative time explicitly, and a
-busy measurement or reset read is modeled as a device NACK. Writes addressed
-to the modeled device while a measurement or reset is busy return
+busy measurement, heater, or reset read is modeled as a device NACK. Writes
+addressed to the modeled device while a measurement, heater, or reset is busy return
 `WriteWhileBusy` as an explicit out-of-fidelity error, except that nested soft
 reset returns its distinct reset-busy limitation.
 

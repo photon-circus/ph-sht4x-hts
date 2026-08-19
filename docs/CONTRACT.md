@@ -104,8 +104,8 @@ this repository. Older SHT4x PDF revisions are not co-authority.
   Each returns the same six-byte high-repeatability temperature/relative-
   humidity frame with one CRC byte per 16-bit word (Table 8). Evidence state:
   supported. Local consequence: a future driver selects one command and reads
-  one six-byte response; a future model uses explicit conversion ticks and
-  independently owns the response CRC frame.
+  one six-byte response; the independent model accepts the six commands with
+  explicit conversion ticks and independently owns the response CRC frame.
 - `SHT45-HEAT-TIME-001` — The maximum heater time is 1.1 s for a long pulse and
   0.11 s for a short pulse, followed by the high-repeatability measurement
   maximum of 8.3 ms (`tHeater`, `tMEAS,h`, Table 5). Typical pulse widths and
@@ -136,9 +136,10 @@ validation assignment.
   through a scripted abstract I2C fake, plus soft-reset write sequencing,
   1000 µs delay, and I2C/NACK error mapping. This does not establish device
   behavior or physical reset timing.
-- Model-only: the independent model covers soft reset while idle or measuring,
-  measurement abort, the 1 ms reset-busy frontier, and return to idle while
-  preserving the explicit OTP serial. This does not establish driver
+- Model-only: the independent model covers soft reset while idle, measuring, or
+  heating, measurement/heater abort, the 1 ms reset-busy frontier, heater and
+  measurement busy frontiers, one-shot response deletion, and return to idle
+  while preserving the explicit OTP serial. This does not establish driver
   conformance or device behavior.
 - Model-conformant: serial-number read, T/RH measurement at high, medium, and
   low repeatability, and soft-reset abort/recovery, through the unpublished
