@@ -63,13 +63,13 @@
 ### Documentation
 
 - Disclosed that the measurement returned by a heater pulse is taken while the
-  heater is energized and therefore describes the heated sensor rather than
-  ambient conditions. It shares the `Measurement` type with the ambient read, so
-  nothing in the type system distinguishes them. How far the two differ is
-  heater physics and stays unretained and unclaimed, as does what either reading
-  implies about the surrounding air — that is a system-calibration question
-  outside this repository. Documented on the operation, in the package README,
-  and in the root README.
+  heater is energized. `heater_pulse` and `measure` share the `Measurement`
+  type, so nothing in the type system records whether a result came from a
+  heater-on or heater-off conversion. How far the two differ is heater physics
+  and stays unretained and unclaimed, as does what either result implies about
+  the surrounding air — that is a system-calibration question outside this
+  repository. Documented on the operation, in the package README, and in the
+  root README.
 
 ### Known issues
 
