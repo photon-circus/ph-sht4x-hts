@@ -282,16 +282,24 @@ impl Sht45Model {
     }
 }
 
+/// Remainders of each four-bit message nibble under the `SHT45-CRC-001`
+/// polynomial, most-significant bit first.
+///
+/// Entry `i` is the remainder left by dividing `i << 4` by `0x31` over four
+/// shifts. Reducing four bits per lookup is a different derivation from the
+/// driver's bit-at-a-time shift register, which is the point: a defect in one
+/// formulation does not reproduce itself in the other, so driver-versus-model
+/// comparison can still discriminate on the CRC.
+const CRC_NIBBLE_REMAINDERS: [u8; 16] = [
+    0x00, 0x31, 0x62, 0x53, 0xc4, 0xf5, 0xa6, 0x97, 0xb9, 0x88, 0xdb, 0xea, 0x7d, 0x4c, 0x1f, 0x2e,
+];
+
 fn crc8(bytes: [u8; 2]) -> u8 {
-    let mut crc = 0xff;
+    let mut crc = 0xff_u8;
     for byte in bytes {
-        crc ^= byte;
-        for _ in 0..8 {
-            crc = if crc & 0x80 != 0 {
-                (crc << 1) ^ 0x31
-            } else {
-                crc << 1
-            };
+        for nibble in [byte >> 4, byte & 0x0f] {
+            let index = ((crc >> 4) ^ nibble) & 0x0f;
+            crc = (crc << 4) ^ CRC_NIBBLE_REMAINDERS[index as usize];
         }
     }
     crc
@@ -702,6 +710,24 @@ mod tests {
         model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]).unwrap();
         model.read(ADDRESS, &mut response).unwrap();
         assert_eq!(response[2], 0x92);
+    }
+
+    #[test]
+    fn crc_remainder_table_matches_the_polynomial_it_claims() {
+        // The table is data, so it is worth deriving independently of itself.
+        // Entry i must be i << 4 divided by 0x31 over four most-significant-bit
+        // shifts.
+        for (index, entry) in CRC_NIBBLE_REMAINDERS.into_iter().enumerate() {
+            let mut remainder = (index as u8) << 4;
+            for _ in 0..4 {
+                remainder = if remainder & 0x80 != 0 {
+                    (remainder << 1) ^ 0x31
+                } else {
+                    remainder << 1
+                };
+            }
+            assert_eq!(remainder, entry, "table entry {index}");
+        }
     }
 
     #[test]
