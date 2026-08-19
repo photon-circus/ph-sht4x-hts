@@ -8,6 +8,9 @@
 - Retained the source-backed SHT45 serial-number propositions used to unblock
   later driver and model work, including the command execution timing for the
   response read.
+- Retained the source-backed SHT45 T/RH measurement propositions for command
+  selection, maximum timing, integer conversion, and one-shot measurement
+  data, without claiming the operation is implemented or model-conformant.
 - Added the implementation-tested serial-number read through abstract async I2C,
   including the device-required command delay, mandatory CRC validation, and
   distinct no-acknowledge errors.
