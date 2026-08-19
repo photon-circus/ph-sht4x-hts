@@ -77,7 +77,9 @@
   identifier behind each modeled behavior and unsupported boundary. The driver
   and conformance READMEs now cite the same identifiers and keep only their
   local consequences instead of maintaining separate prose copies of the
-  command bytes and timing frontiers.
+  command bytes and timing frontiers. The packaged driver README links the
+  contract by absolute URL, since the contract is not part of the packaged
+  crate and a relative link would not resolve from crates.io or docs.rs.
 - Declared that the model does not represent the serial command's execution
   time as a busy frontier. That abstraction was previously unstated.
 

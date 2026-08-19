@@ -19,10 +19,12 @@ The package supports implementation-tested serial-number and one-shot T/RH
 reads, all six heater pulses, and soft reset for one SHT45-AD1B device.
 
 Each device fact below is retained once, with exact provenance, as an
-identified proposition in the repository contract at `docs/CONTRACT.md`. This
-README cites those identifiers and states only what the driver does with them;
-it does not keep a second copy of the propositions or of their source
-coordinates.
+identified proposition in the
+[repository contract](https://github.com/photon-circus/ph-sht45-hts/blob/main/docs/CONTRACT.md). This README cites those identifiers and
+states only what the driver does with them; it does not keep a second copy of
+the propositions or of their source coordinates. The contract is not part of
+the packaged crate, so that link is absolute and resolves from crates.io and
+docs.rs as well as from the repository.
 
 | Operation | Propositions consumed | What the driver does |
 | --- | --- | --- |
