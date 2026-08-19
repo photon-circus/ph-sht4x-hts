@@ -22,7 +22,7 @@ comparison establishes.
 | `read_serial_number` | `SHT45-SN-CMD-001`, `SHT45-CRC-001` | Unequal serial words distinguish transmission order; an adapter-corrupted frame must surface as the driver's CRC error. |
 | `measure` | `SHT45-MEAS-CMD-001`, `SHT45-MEAS-TIME-001` | Each repeatability's command byte and maximum-delay frontier are asserted independently of the driver. |
 | `heater_pulse` | `SHT45-HEAT-CMD-001`, `SHT45-HEAT-TIME-001` | All six power and duration selections, each with its own asserted command byte and long or short wait. |
-| `reset` | `SHT45-RST-CMD-001`, `SHT45-RST-TIME-001`, `SHT45-RST-ABORT-001` | Reset aborts an in-flight measurement or long heater pulse, routes the driver's delay into model time, and recovers the serial. |
+| `reset` | `SHT45-RST-CMD-001`, `SHT45-RST-TIME-001`, `SHT45-RST-ABORT-001`, `SHT45-I2C-XFER-001` | Reset aborts an in-flight measurement or long heater pulse and routes the driver's delay into model time. Serial recovery afterwards rests on the OTP serial surviving, which is `SHT45-I2C-XFER-001`, not on the reset propositions. |
 
 Delay advancement is shared with the model, so the driver's requested wait is
 the input that moves the model's clock. A no-op delay provider therefore leaves

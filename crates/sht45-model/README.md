@@ -42,7 +42,7 @@ relative-humidity conversion ticks are injected, never generated.
 | Busy read | `SHT45-I2C-XFER-001` | A read while busy is modeled as the device NACK, distinct from a model limitation. |
 | Heater commands | `SHT45-HEAT-CMD-001`, `SHT45-MEAS-ONCE-001` | All six bytes accepted, each returning the injected six-byte CRC frame; the frame is deleted after the first successful read on the same terms as a measurement. |
 | Heater timing | `SHT45-HEAT-TIME-001` | Long and short maximum busy frontiers, each including the trailing high-repeatability measurement. |
-| Soft reset | `SHT45-RST-CMD-001`, `SHT45-RST-TIME-001` | `0x94` accepted; the device stays busy for the reset interval, then returns to idle with no payload. |
+| Soft reset | `SHT45-RST-CMD-001`, `SHT45-RST-TIME-001`, `SHT45-RST-ABORT-001` | `0x94` accepted; the device stays busy for the whole 1 ms interval, then returns to idle with no payload. `SHT45-RST-TIME-001` gives that as a maximum; treating it as the exact frontier is a declared model abstraction. |
 | Reset abort | `SHT45-RST-ABORT-001` | Soft reset aborts a busy measurement or heater pulse and begins reset timing. |
 
 ### Injected
