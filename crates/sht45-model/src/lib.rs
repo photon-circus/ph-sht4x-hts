@@ -6,7 +6,17 @@
 pub const ADDRESS: u8 = 0x44;
 /// The modeled serial-number command byte.
 pub const SERIAL_NUMBER_COMMAND: u8 = 0x89;
+/// The modeled high-repeatability measurement command byte.
+pub const MEASURE_HIGH_COMMAND: u8 = 0xfd;
+/// The modeled medium-repeatability measurement command byte.
+pub const MEASURE_MEDIUM_COMMAND: u8 = 0xf6;
+/// The modeled low-repeatability measurement command byte.
+pub const MEASURE_LOW_COMMAND: u8 = 0xe0;
 const RESPONSE_LEN: usize = 6;
+
+const HIGH_MEASUREMENT_NS: u64 = 8_300_000;
+const MEDIUM_MEASUREMENT_NS: u64 = 4_500_000;
+const LOW_MEASUREMENT_NS: u64 = 1_600_000;
 
 /// Errors for transactions outside the model's fidelity boundary.
 #[derive(Debug, PartialEq, Eq)]
@@ -19,14 +29,41 @@ pub enum Error {
     UnsupportedCommand(u8),
     /// The response buffer was not exactly six bytes long.
     InvalidReadLength(usize),
-    /// A read was attempted without a preceding serial command write.
+    /// A read was attempted without a preceding command write.
     ReadBeforeCommand,
+    /// A measurement read was attempted before its maximum completion time.
+    Busy,
+    /// A measurement was requested without explicit conversion ticks.
+    MissingMeasurementTicks,
+    /// A completed measurement was already consumed or is otherwise unavailable.
+    MeasurementDataUnavailable,
 }
 
-/// Independent behavioral model of the idle SHT45 serial-number operation.
+/// Explicit conversion ticks injected into a modeled measurement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MeasurementTicks {
+    /// Raw temperature conversion ticks.
+    pub temperature: u16,
+    /// Raw relative-humidity conversion ticks.
+    pub humidity: u16,
+}
+
+#[derive(Clone, Copy)]
+enum PendingCommand {
+    Serial,
+    Measurement {
+        ready_at_ns: u64,
+        ticks: MeasurementTicks,
+    },
+}
+
+/// Independent behavioral model of the SHT45 serial and one-shot measurement operations.
 pub struct Sht45Model {
     serial: u32,
-    command_pending: bool,
+    measurement_ticks: Option<MeasurementTicks>,
+    elapsed_ns: u64,
+    pending: Option<PendingCommand>,
+    measurement_consumed: bool,
 }
 
 impl Sht45Model {
@@ -34,8 +71,25 @@ impl Sht45Model {
     pub const fn new(serial: u32) -> Self {
         Self {
             serial,
-            command_pending: false,
+            measurement_ticks: None,
+            elapsed_ns: 0,
+            pending: None,
+            measurement_consumed: false,
         }
+    }
+
+    /// Inject explicit raw conversion ticks for subsequent measurements.
+    pub const fn with_measurement_ticks(mut self, temperature: u16, humidity: u16) -> Self {
+        self.measurement_ticks = Some(MeasurementTicks {
+            temperature,
+            humidity,
+        });
+        self
+    }
+
+    /// Advance modeled relative time without using a wall clock.
+    pub fn advance_ns(&mut self, nanoseconds: u64) {
+        self.elapsed_ns = self.elapsed_ns.saturating_add(nanoseconds);
     }
 
     /// Apply the modeled command write, including its STOP boundary.
@@ -52,11 +106,31 @@ impl Sht45Model {
                 actual: bytes.len(),
             });
         }
-        if bytes[0] != SERIAL_NUMBER_COMMAND {
-            return Err(Error::UnsupportedCommand(bytes[0]));
+        match bytes[0] {
+            SERIAL_NUMBER_COMMAND => {
+                self.pending = Some(PendingCommand::Serial);
+                self.measurement_consumed = false;
+                Ok(())
+            }
+            MEASURE_HIGH_COMMAND | MEASURE_MEDIUM_COMMAND | MEASURE_LOW_COMMAND => {
+                let ticks = self
+                    .measurement_ticks
+                    .ok_or(Error::MissingMeasurementTicks)?;
+                let duration_ns = match bytes[0] {
+                    MEASURE_HIGH_COMMAND => HIGH_MEASUREMENT_NS,
+                    MEASURE_MEDIUM_COMMAND => MEDIUM_MEASUREMENT_NS,
+                    MEASURE_LOW_COMMAND => LOW_MEASUREMENT_NS,
+                    _ => unreachable!(),
+                };
+                self.pending = Some(PendingCommand::Measurement {
+                    ready_at_ns: self.elapsed_ns.saturating_add(duration_ns),
+                    ticks,
+                });
+                self.measurement_consumed = false;
+                Ok(())
+            }
+            command => Err(Error::UnsupportedCommand(command)),
         }
-        self.command_pending = true;
-        Ok(())
     }
 
     /// Fill the modeled six-byte response, including its STOP boundary.
@@ -70,18 +144,37 @@ impl Sht45Model {
         if response.len() != RESPONSE_LEN {
             return Err(Error::InvalidReadLength(response.len()));
         }
-        if !self.command_pending {
-            return Err(Error::ReadBeforeCommand);
+        match self.pending {
+            Some(PendingCommand::Serial) => {
+                let words = [(self.serial >> 16) as u16, self.serial as u16];
+                for (index, word) in words.into_iter().enumerate() {
+                    let bytes = word.to_be_bytes();
+                    let offset = index * 3;
+                    response[offset..offset + 2].copy_from_slice(&bytes);
+                    response[offset + 2] = crc8(bytes);
+                }
+                self.pending = None;
+                self.measurement_consumed = false;
+                Ok(())
+            }
+            Some(PendingCommand::Measurement { ready_at_ns, ticks }) => {
+                if self.elapsed_ns < ready_at_ns {
+                    return Err(Error::Busy);
+                }
+                let words = [ticks.temperature, ticks.humidity];
+                for (index, word) in words.into_iter().enumerate() {
+                    let bytes = word.to_be_bytes();
+                    let offset = index * 3;
+                    response[offset..offset + 2].copy_from_slice(&bytes);
+                    response[offset + 2] = crc8(bytes);
+                }
+                self.pending = None;
+                self.measurement_consumed = true;
+                Ok(())
+            }
+            None if self.measurement_consumed => Err(Error::MeasurementDataUnavailable),
+            None => Err(Error::ReadBeforeCommand),
         }
-        let words = [(self.serial >> 16) as u16, self.serial as u16];
-        for (index, word) in words.into_iter().enumerate() {
-            let bytes = word.to_be_bytes();
-            let offset = index * 3;
-            response[offset..offset + 2].copy_from_slice(&bytes);
-            response[offset + 2] = crc8(bytes);
-        }
-        self.command_pending = false;
-        Ok(())
     }
 }
 
@@ -112,6 +205,62 @@ mod tests {
         model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]).unwrap();
         model.read(ADDRESS, &mut response).unwrap();
         assert_eq!(response, [0xbe, 0xef, 0x92, 0xbe, 0xef, 0x92]);
+    }
+
+    #[test]
+    fn models_high_measurement_busy_frontier_and_frame() {
+        let mut model = Sht45Model::new(0).with_measurement_ticks(0xbeef, 0xbeef);
+        let mut response = [0; 6];
+
+        model.write(ADDRESS, &[MEASURE_HIGH_COMMAND]).unwrap();
+        model.advance_ns(8_299_999);
+        assert_eq!(model.read(ADDRESS, &mut response), Err(Error::Busy));
+        model.advance_ns(1);
+        model.read(ADDRESS, &mut response).unwrap();
+
+        assert_eq!(response, [0xbe, 0xef, 0x92, 0xbe, 0xef, 0x92]);
+    }
+
+    #[test]
+    fn models_medium_and_low_measurement_frontiers() {
+        for (command, duration_ns) in [
+            (MEASURE_MEDIUM_COMMAND, 4_500_000),
+            (MEASURE_LOW_COMMAND, 1_600_000),
+        ] {
+            let mut model = Sht45Model::new(0).with_measurement_ticks(0x1234, 0x5678);
+            let mut response = [0; 6];
+
+            model.write(ADDRESS, &[command]).unwrap();
+            model.advance_ns(duration_ns - 1);
+            assert_eq!(model.read(ADDRESS, &mut response), Err(Error::Busy));
+            model.advance_ns(1);
+            model.read(ADDRESS, &mut response).unwrap();
+        }
+    }
+
+    #[test]
+    fn retains_split_delay_progress_and_consumes_measurement_once() {
+        let mut model = Sht45Model::new(0).with_measurement_ticks(0xbeef, 0xbeef);
+        let mut response = [0; 6];
+
+        model.write(ADDRESS, &[MEASURE_HIGH_COMMAND]).unwrap();
+        model.advance_ns(4_000_000);
+        model.advance_ns(4_300_000);
+        model.read(ADDRESS, &mut response).unwrap();
+        assert_eq!(
+            model.read(ADDRESS, &mut response),
+            Err(Error::MeasurementDataUnavailable)
+        );
+    }
+
+    #[test]
+    fn requires_explicit_measurement_ticks() {
+        let mut model = Sht45Model::new(0);
+
+        assert_eq!(
+            model.write(ADDRESS, &[MEASURE_HIGH_COMMAND]),
+            Err(Error::MissingMeasurementTicks)
+        );
     }
 
     #[test]
