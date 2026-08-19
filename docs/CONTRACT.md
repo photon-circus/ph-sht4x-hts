@@ -86,12 +86,12 @@ this repository. Older SHT4x PDF revisions are not co-authority.
 
 - `SHT45-RST-CMD-001` — Soft reset is command byte `0x94`; the device ACKs and
   returns no CRC data payload (Table 8). Evidence state: supported.
-  Local consequence: a future driver reset operation writes `[0x94]` and does
-  not read a response payload.
+  Driver requirement: the reset operation writes `[0x94]` and does not read a
+  response payload.
 - `SHT45-RST-TIME-001` — After ACK of soft reset, the maximum time to idle is
   1 ms (`tSR`, Table 5). The same bound is stated for general-call reset, which
   this repository does not consume. Evidence state: supported. Local
-  consequence: a future driver reset operation waits 1000 µs after the ACK.
+  Driver requirement: the reset operation waits 1000 µs after the ACK.
 - `SHT45-RST-ABORT-001` — Any command that triggers an action can be aborted by
   soft reset (section 4.8). Evidence state: supported. Model requirement: accept
   `0x94` while measurement is busy, discard the pending measurement, and remain
@@ -108,7 +108,9 @@ validation assignment.
 
 - Implementation-tested: serial-number and T/RH measurement sequencing,
   response decoding, CRC validation, integer conversion, and error mapping
-  through a scripted abstract I2C fake. This does not establish device behavior.
+  through a scripted abstract I2C fake, plus soft-reset write sequencing,
+  1000 µs delay, and I2C/NACK error mapping. This does not establish device
+  behavior or physical reset timing.
 - Model-only: the independent model covers soft reset while idle or measuring,
   measurement abort, the 1 ms reset-busy frontier, and return to idle while
   preserving the explicit OTP serial. This does not establish driver
