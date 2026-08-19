@@ -10,6 +10,7 @@ pub const ADDRESS: u8 = 0x44;
 const SERIAL_NUMBER_COMMAND: u8 = 0x89;
 const SERIAL_NUMBER_RESPONSE_LEN: usize = 6;
 const SERIAL_NUMBER_DURATION_US: u32 = 10;
+const MEASUREMENT_RESPONSE_LEN: usize = 6;
 
 /// Errors returned by the SHT45 driver.
 #[derive(Debug, PartialEq, Eq)]
@@ -18,12 +19,32 @@ pub enum Error<E> {
     I2c(E),
     /// The device was not ready or otherwise did not acknowledge the transfer.
     NoAcknowledge(E),
-    /// One of the two serial-number words failed its CRC check.
+    /// One of the two response words failed its CRC check.
     Crc {
         word: usize,
         expected: u8,
         actual: u8,
     },
+}
+
+/// Measurement repeatability supported by the SHT45.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Repeatability {
+    /// High repeatability: maximum measurement duration 8.3 ms.
+    High,
+    /// Medium repeatability: maximum measurement duration 4.5 ms.
+    Medium,
+    /// Low repeatability: maximum measurement duration 1.6 ms.
+    Low,
+}
+
+/// One temperature and relative-humidity measurement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Measurement {
+    /// Temperature in thousandths of a degree Celsius.
+    pub t_mdeg_c: i32,
+    /// Relative humidity in thousandths of a percent.
+    pub rh_milli_pct: i32,
 }
 
 /// An SHT45 connected to abstract asynchronous I2C and delay resources.
@@ -77,6 +98,57 @@ impl<I2C, DELAY> Sht45<I2C, DELAY> {
         Ok((u32::from(word0) << 16) | u32::from(word1))
     }
 
+    /// Perform one temperature and relative-humidity measurement.
+    pub async fn measure<E>(
+        &mut self,
+        repeatability: Repeatability,
+    ) -> Result<Measurement, Error<E>>
+    where
+        I2C: I2c<Error = E>,
+        DELAY: DelayNs,
+        E: embedded_hal::i2c::Error,
+    {
+        let (command, duration_us) = match repeatability {
+            Repeatability::High => (0xfd, 8_300),
+            Repeatability::Medium => (0xf6, 4_500),
+            Repeatability::Low => (0xe0, 1_600),
+        };
+
+        self.i2c
+            .write(ADDRESS, &[command])
+            .await
+            .map_err(map_i2c_error)?;
+
+        self.delay.delay_us(duration_us).await;
+
+        let mut response = [0; MEASUREMENT_RESPONSE_LEN];
+        self.i2c
+            .read(ADDRESS, &mut response)
+            .await
+            .map_err(map_i2c_error)?;
+
+        let temperature = u16::from_be_bytes([response[0], response[1]]);
+        let humidity = u16::from_be_bytes([response[3], response[4]]);
+        for (word, (value, actual)) in [(temperature, response[2]), (humidity, response[5])]
+            .into_iter()
+            .enumerate()
+        {
+            let expected = crc8(value.to_be_bytes());
+            if expected != actual {
+                return Err(Error::Crc {
+                    word,
+                    expected,
+                    actual,
+                });
+            }
+        }
+
+        Ok(Measurement {
+            t_mdeg_c: convert_temperature(temperature),
+            rh_milli_pct: convert_humidity(humidity),
+        })
+    }
+
     /// Return the underlying I2C bus and delay resources.
     pub fn release(self) -> (I2C, DELAY) {
         (self.i2c, self.delay)
@@ -106,6 +178,14 @@ fn crc8(bytes: [u8; 2]) -> u8 {
         }
     }
     crc
+}
+
+fn convert_temperature(ticks: u16) -> i32 {
+    -45_000 + (175_000_i64 * i64::from(ticks) / 65_535) as i32
+}
+
+fn convert_humidity(ticks: u16) -> i32 {
+    -6_000 + (125_000_i64 * i64::from(ticks) / 65_535) as i32
 }
 
 #[cfg(test)]
@@ -207,6 +287,86 @@ mod tests {
     #[test]
     fn crc_vector_matches_datasheet_example() {
         assert_eq!(crc8([0xbe, 0xef]), 0x92);
+    }
+
+    #[test]
+    fn converts_measurement_vectors_without_cropping() {
+        assert_eq!(convert_temperature(0), -45_000);
+        assert_eq!(convert_humidity(0), -6_000);
+        assert_eq!(convert_temperature(u16::MAX), 130_000);
+        assert_eq!(convert_humidity(u16::MAX), 119_000);
+        assert_eq!(convert_temperature(0xbeef), 85_523);
+        assert_eq!(convert_humidity(0xbeef), 87_230);
+    }
+
+    #[test]
+    fn measures_at_each_repeatability_with_the_required_command_and_delay() {
+        for (repeatability, command, delay_ns) in [
+            (Repeatability::High, 0xfd, 8_300_000),
+            (Repeatability::Medium, 0xf6, 4_500_000),
+            (Repeatability::Low, 0xe0, 1_600_000),
+        ] {
+            let (i2c, delay, events) = fake([0, 0, 0x81, 0, 0, 0x81]);
+            let mut sensor = Sht45::new(i2c, delay);
+            assert_eq!(
+                block_on(sensor.measure(repeatability)),
+                Ok(Measurement {
+                    t_mdeg_c: -45_000,
+                    rh_milli_pct: -6_000,
+                })
+            );
+            assert_eq!(
+                *events.borrow(),
+                vec![
+                    Event::Write(ADDRESS, vec![command]),
+                    Event::DelayNs(delay_ns),
+                    Event::Read(ADDRESS, 6),
+                ]
+            );
+        }
+    }
+
+    #[test]
+    fn measures_and_converts_both_words() {
+        let (i2c, delay, _) = fake([0xbe, 0xef, 0x92, 0xbe, 0xef, 0x92]);
+        let mut sensor = Sht45::new(i2c, delay);
+        assert_eq!(
+            block_on(sensor.measure(Repeatability::High)),
+            Ok(Measurement {
+                t_mdeg_c: 85_523,
+                rh_milli_pct: 87_230,
+            })
+        );
+    }
+
+    #[test]
+    fn rejects_each_corrupt_measurement_crc() {
+        for index in [2, 5] {
+            let mut response = [0xbe, 0xef, 0x92, 0xbe, 0xef, 0x92];
+            response[index] ^= 1;
+            let (i2c, delay, _) = fake(response);
+            let mut sensor = Sht45::new(i2c, delay);
+            assert!(matches!(
+                block_on(sensor.measure(Repeatability::Medium)),
+                Err(Error::Crc { .. })
+            ));
+        }
+    }
+
+    #[test]
+    fn surfaces_measurement_read_errors() {
+        for (read_error, expected) in [
+            (
+                FakeError::NoAcknowledge,
+                Error::NoAcknowledge(FakeError::NoAcknowledge),
+            ),
+            (FakeError::Bus, Error::I2c(FakeError::Bus)),
+        ] {
+            let (mut i2c, delay, _) = fake([0, 0, 0x81, 0, 0, 0x81]);
+            i2c.read_error = Some(read_error);
+            let mut sensor = Sht45::new(i2c, delay);
+            assert_eq!(block_on(sensor.measure(Repeatability::Low)), Err(expected));
+        }
     }
 
     #[test]

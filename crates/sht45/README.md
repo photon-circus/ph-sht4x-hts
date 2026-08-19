@@ -15,11 +15,11 @@ This package is not available from crates.io.
 
 ## Current state
 
-The package supports an implementation-tested serial-number read for one SHT45-AD1B at 7-bit I2C address `0x44`. It writes command `0x89`, waits at least 10 µs, reads six response bytes, validates both CRC-8 values, and returns the transmission-order `u32` serial number.
+The package supports implementation-tested serial-number and one-shot T/RH reads for one SHT45-AD1B at 7-bit I2C address `0x44`. The serial read writes command `0x89`, waits at least 10 µs, reads six response bytes, validates both CRC-8 values, and returns the transmission-order `u32` serial number. A measurement writes `0xFD`, `0xF6`, or `0xE0` for high, medium, or low repeatability, waits the corresponding maximum duration of 8.3, 4.5, or 1.6 ms, then reads and validates six response bytes. Results are uncropped integer millidegrees Celsius and milli-%RH.
 
 ## Platform support
 
-The crate is `no_std`, uses abstract `embedded-hal-async` I2C and delay resources, allocates no memory, and forbids unsafe code. The caller owns those resources, power-up timing, scheduling, retries, and recovery policy. The driver owns the serial command's execution wait. Model conformance covers the serial-number read only; no physical-device claim is made.
+The crate is `no_std`, uses abstract `embedded-hal-async` I2C and delay resources, allocates no memory, and forbids unsafe code. The caller owns those resources, power-up timing, scheduling, retries, and recovery policy. The driver owns the serial and measurement commands' execution waits. Model conformance covers the serial-number read only; no physical-device claim is made.
 
 The independent model is a separate package; its existence does not establish conformance for this driver.
 
