@@ -5,6 +5,9 @@
 ### Added
 
 - Initialized the bounded Sensirion SHT45 driver repository with an unpublished Incubating scaffold.
+- Retained the source-backed SHT45 serial-number propositions used to unblock
+  later driver and model work, including the command-execution wait before the
+  response read; no serial-number operation is implemented.
 
 ### Known issues
 
