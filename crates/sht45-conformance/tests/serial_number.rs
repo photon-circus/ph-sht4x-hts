@@ -1,7 +1,9 @@
 use embedded_hal::i2c::{ErrorType, Operation, SevenBitAddress};
 use embedded_hal_async::{delay::DelayNs, i2c::I2c};
 use futures_lite::future::block_on;
-use ph_sht45_hts::{ADDRESS, Error as DriverError, Sht45};
+use ph_sht45_hts::{
+    ADDRESS, Error as DriverError, HeaterDuration, HeaterPower, Measurement, Sht45,
+};
 use ph_sht45_hts_model::{
     Error as ModelError, MEASURE_HIGH_COMMAND, SERIAL_NUMBER_COMMAND, Sht45Model,
 };
@@ -232,6 +234,76 @@ fn public_measure_requires_delay_to_reach_the_model_frontier() {
 }
 
 #[test]
+fn public_heater_pulse_conforms_for_all_power_and_duration_selections() {
+    for (power, duration, expected_command, expected_delay_ns) in [
+        (HeaterPower::High, HeaterDuration::Long, 0x39, 1_108_300_000),
+        (
+            HeaterPower::Medium,
+            HeaterDuration::Long,
+            0x2f,
+            1_108_300_000,
+        ),
+        (HeaterPower::Low, HeaterDuration::Long, 0x1e, 1_108_300_000),
+        (HeaterPower::High, HeaterDuration::Short, 0x32, 118_300_000),
+        (
+            HeaterPower::Medium,
+            HeaterDuration::Short,
+            0x24,
+            118_300_000,
+        ),
+        (HeaterPower::Low, HeaterDuration::Short, 0x15, 118_300_000),
+    ] {
+        let (i2c, delay, events) = ModelI2c::with_measurement_ticks(0, 0xbeef, 0xbeef);
+        let mut sensor = Sht45::new(i2c, delay);
+
+        assert_eq!(
+            block_on(sensor.heater_pulse(power, duration)),
+            Ok(Measurement {
+                t_mdeg_c: 85_523,
+                rh_milli_pct: 87_230,
+            })
+        );
+        assert_eq!(
+            *events.borrow(),
+            [
+                AdapterEvent::Write {
+                    address: ADDRESS,
+                    bytes: vec![expected_command],
+                },
+                AdapterEvent::DelayNs(expected_delay_ns),
+                AdapterEvent::Read {
+                    address: ADDRESS,
+                    length: 6,
+                },
+            ]
+        );
+    }
+}
+
+#[test]
+fn public_heater_pulse_rejects_an_adapter_corrupted_model_frame() {
+    let (mut i2c, delay, _events) = ModelI2c::with_measurement_ticks(0, 0xbeef, 0xbeef);
+    i2c.corrupt_next_crc();
+    let mut sensor = Sht45::new(i2c, delay);
+
+    assert!(matches!(
+        block_on(sensor.heater_pulse(HeaterPower::High, HeaterDuration::Short)),
+        Err(DriverError::Crc { word: 0, .. })
+    ));
+}
+
+#[test]
+fn public_heater_pulse_requires_delay_to_reach_the_model_frontier() {
+    let (i2c, _delay, _events) = ModelI2c::with_measurement_ticks(0, 0xbeef, 0xbeef);
+    let mut sensor = Sht45::new(i2c, NoopDelay);
+
+    assert!(matches!(
+        block_on(sensor.heater_pulse(HeaterPower::High, HeaterDuration::Long)),
+        Err(DriverError::NoAcknowledge(_))
+    ));
+}
+
+#[test]
 fn public_reset_aborts_an_in_flight_measurement_and_preserves_serial() {
     let (mut i2c, delay, events) = ModelI2c::with_measurement_ticks(0x1234_5678, 0xbeef, 0xbeef);
     let mut operations = [Operation::Write(&[MEASURE_HIGH_COMMAND])];
@@ -281,5 +353,42 @@ fn public_reset_without_delay_does_not_fake_idle_recovery() {
         Err(DriverError::I2c(AdapterError::Model(
             ModelError::WriteWhileBusy,
         )))
+    );
+}
+
+#[test]
+fn public_reset_aborts_an_in_flight_heater_pulse_and_preserves_serial() {
+    let (mut i2c, delay, events) = ModelI2c::with_measurement_ticks(0x1234_5678, 0xbeef, 0xbeef);
+    let mut operations = [Operation::Write(&[0x39])];
+    block_on(i2c.transaction(ADDRESS, &mut operations)).unwrap();
+    events.borrow_mut().clear();
+
+    let mut sensor = Sht45::new(i2c, delay);
+    assert_eq!(block_on(sensor.reset()), Ok(()));
+    assert_eq!(
+        *events.borrow(),
+        [
+            AdapterEvent::Write {
+                address: ADDRESS,
+                bytes: vec![ph_sht45_hts_model::SOFT_RESET_COMMAND],
+            },
+            AdapterEvent::DelayNs(1_000_000),
+        ]
+    );
+
+    assert_eq!(block_on(sensor.read_serial_number()), Ok(0x1234_5678));
+    assert_eq!(
+        &events.borrow()[2..],
+        [
+            AdapterEvent::Write {
+                address: ADDRESS,
+                bytes: vec![SERIAL_NUMBER_COMMAND],
+            },
+            AdapterEvent::DelayNs(10_000),
+            AdapterEvent::Read {
+                address: ADDRESS,
+                length: 6,
+            },
+        ]
     );
 }

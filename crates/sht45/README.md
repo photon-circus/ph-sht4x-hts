@@ -5,7 +5,7 @@ Incubating unpublished async no_std Rust driver for the Sensirion SHT45 humidity
 > [!WARNING]
 > **Lifecycle:** Incubating — bounded work intended to become a supported driver
 > **Distribution:** Unpublished; the candidate version is `0.1.0-incubating.1` and the manifest sets `publish = false`.
-> **Model conformance:** The unpublished host-only conformance check covers the driver's serial-number read, one-shot T/RH measurement at all three repeatabilities, and soft-reset abort/recovery; other operations remain uncovered.
+> **Model conformance:** The unpublished host-only conformance check covers the driver's serial-number read, one-shot T/RH measurement at all three repeatabilities, all six heater pulses, and soft-reset abort/recovery.
 > **Physical evidence:** None. No reviewed physical-device evidence supports a physically observed or qualified claim.
 > Evidence and limitations apply only to named operations; publication does not imply hardware qualification.
 
@@ -19,7 +19,7 @@ The package supports implementation-tested serial-number and one-shot T/RH reads
 
 ## Platform support
 
-The crate is `no_std`, uses abstract `embedded-hal-async` I2C and delay resources, allocates no memory, and forbids unsafe code. The caller owns those resources, power-up timing, scheduling, retries, recovery policy, and heater cadence or duty-cycle policy. The driver owns the serial, measurement, heater-pulse, and soft-reset commands' execution waits. Model conformance covers the serial-number read, T/RH measurement at high, medium, and low repeatability, and soft-reset abort/recovery; heater pulses remain implementation-tested only, and no physical-device claim is made.
+The crate is `no_std`, uses abstract `embedded-hal-async` I2C and delay resources, allocates no memory, and forbids unsafe code. The caller owns those resources, power-up timing, scheduling, retries, recovery policy, and heater cadence or duty-cycle policy. The driver owns the serial, measurement, heater-pulse, and soft-reset commands' execution waits. Model conformance covers the serial-number read, T/RH measurement at high, medium, and low repeatability, all six heater pulses, and soft-reset abort/recovery; no physical-device claim is made.
 
 The independent model is a separate package; its existence does not establish conformance for this driver.
 

@@ -5,7 +5,7 @@ Incubating unpublished async no_std Rust driver for the Sensirion SHT45 humidity
 > [!WARNING]
 > **Lifecycle:** Incubating — bounded work intended to become a supported driver
 > **Distribution:** Unpublished; the candidate version is `0.1.0-incubating.1` and the manifest sets `publish = false`.
-> **Model conformance:** The unpublished host-only conformance check covers the driver's serial-number read, one-shot T/RH measurement at all three repeatabilities, and soft-reset abort/recovery; other operations remain uncovered.
+> **Model conformance:** The unpublished host-only conformance check covers the driver's serial-number read, one-shot T/RH measurement at all three repeatabilities, all six heater pulses, and soft-reset abort/recovery.
 > **Physical evidence:** None. No reviewed physical-device evidence supports a physically observed or qualified claim.
 > Evidence and limitations apply only to named operations; publication does not imply hardware qualification.
 
@@ -13,7 +13,7 @@ Incubating unpublished async no_std Rust driver for the Sensirion SHT45 humidity
 
 This repository owns truthful supported SHT45 operations on one device through an abstract async I2C bus.
 
-It does not own board topology; concrete bus/GPIO/power resources; sampling cadence; retry/escalation policy; heater application or duty-cycle policy; SHT40/41/43 family claims; model conformance beyond the explicitly named host-only serial-number, T/RH, and soft-reset checks; or physical qualification.
+It does not own board topology; concrete bus/GPIO/power resources; sampling cadence; retry/escalation policy; heater application or duty-cycle policy; SHT40/41/43 family claims; model conformance beyond the explicitly named host-only serial-number, T/RH, heater-pulse, and soft-reset checks; or physical qualification.
 
 ## Supported scope
 
@@ -35,7 +35,7 @@ heater cadence and duty-cycle policy. See [the package README](crates/sht45/READ
 
 ## Evidence and limitations
 
-Model conformance covers the host-only serial-number, T/RH measure, and soft-reset abort/recovery checks described below; no physical-device claim is made. Host compilation, linting, tests, and package inspection establish only their named software properties.
+Model conformance covers the host-only serial-number, T/RH measure, all six heater pulses, and soft-reset abort/recovery checks described below; no physical-device claim is made. Host compilation, linting, tests, and package inspection establish only their named software properties.
 
 See [the repository contract](docs/CONTRACT.md) for the current responsibility, invariants, evidence posture, and source handling.
 
