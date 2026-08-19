@@ -33,7 +33,12 @@ represent hidden wall time; callers advance relative time explicitly, and a
 busy measurement, heater, or reset read is modeled as a device NACK. Writes
 addressed to the modeled device while a measurement, heater, or reset is busy return
 `WriteWhileBusy` as an explicit out-of-fidelity error, except that nested soft
-reset returns its distinct reset-busy limitation.
+reset returns its distinct reset-busy limitation. A command write that would
+discard an unconsumed response — an unread serial frame, or measurement or
+heater data that has reached its frontier — returns
+`WriteWithPendingResponse` and commits nothing. No retained source decides what
+the device does for that sequence, including for soft reset, so it is an
+explicit limitation rather than a modeled behavior.
 
 The model exposes separate write and read operations, representing the
 two-STOP transaction domain. Combined `write_read` or repeated-start behavior

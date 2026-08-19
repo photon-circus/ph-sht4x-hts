@@ -46,6 +46,13 @@ pub enum Error {
     WriteWhileBusy,
     /// A nested soft reset was attempted while reset was already busy.
     ResetWhileBusy,
+    /// A command write would have discarded an unconsumed response.
+    ///
+    /// The sources do not declare what the device does when a new command
+    /// arrives while a serial frame, or completed measurement or heater data,
+    /// is still waiting to be read. The model rejects the sequence as an
+    /// explicit limitation rather than choosing a plausible outcome.
+    WriteWithPendingResponse,
     /// A measurement was requested without explicit conversion ticks.
     MissingMeasurementTicks,
     /// A completed measurement was already consumed or is otherwise unavailable.
@@ -139,6 +146,16 @@ impl Sht45Model {
             } else {
                 Err(Error::WriteWhileBusy)
             };
+        }
+        let response_pending = matches!(self.pending, Some(PendingCommand::Serial))
+            || matches!(
+                self.pending,
+                Some(PendingCommand::Measurement { ready_at_ns, .. })
+                    | Some(PendingCommand::Heater { ready_at_ns, .. })
+                    if self.elapsed_ns >= ready_at_ns
+            );
+        if response_pending {
+            return Err(Error::WriteWithPendingResponse);
         }
         if bytes.len() != 1 {
             return Err(Error::InvalidWriteLength {
@@ -504,6 +521,106 @@ mod tests {
         model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]).unwrap();
         model.read(ADDRESS, &mut response).unwrap();
         assert_eq!(response, [0x12, 0x34, 0x37, 0x56, 0x78, 0x7d]);
+    }
+
+    #[test]
+    fn rejects_a_write_that_would_discard_a_pending_serial_response() {
+        let mut model = Sht45Model::new(0x1234_5678).with_measurement_ticks(0xbeef, 0xbeef);
+        let mut response = [0; 6];
+
+        model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]).unwrap();
+        assert_eq!(
+            model.write(ADDRESS, &[MEASURE_HIGH_COMMAND]),
+            Err(Error::WriteWithPendingResponse)
+        );
+
+        // The rejected write commits nothing: the serial frame is still there.
+        model.read(ADDRESS, &mut response).unwrap();
+        assert_eq!(response, [0x12, 0x34, 0x37, 0x56, 0x78, 0x7d]);
+    }
+
+    #[test]
+    fn rejects_a_write_that_would_discard_ready_measurement_data() {
+        let mut model = Sht45Model::new(0).with_measurement_ticks(0x1234, 0x5678);
+        let mut response = [0; 6];
+
+        model.write(ADDRESS, &[MEASURE_HIGH_COMMAND]).unwrap();
+        model.advance_ns(HIGH_MEASUREMENT_NS);
+        assert_eq!(
+            model.write(ADDRESS, &[MEASURE_LOW_COMMAND]),
+            Err(Error::WriteWithPendingResponse)
+        );
+
+        model.read(ADDRESS, &mut response).unwrap();
+        assert_eq!(
+            response,
+            [
+                0x12,
+                0x34,
+                crc8([0x12, 0x34]),
+                0x56,
+                0x78,
+                crc8([0x56, 0x78]),
+            ]
+        );
+    }
+
+    #[test]
+    fn rejects_a_write_that_would_discard_ready_heater_data() {
+        let mut model = Sht45Model::new(0).with_measurement_ticks(0xbeef, 0xbeef);
+        let mut response = [0; 6];
+
+        model.write(ADDRESS, &[HEATER_SHORT_COMMANDS[0]]).unwrap();
+        model.advance_ns(SHORT_HEATER_NS);
+        assert_eq!(
+            model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]),
+            Err(Error::WriteWithPendingResponse)
+        );
+
+        model.read(ADDRESS, &mut response).unwrap();
+        assert_eq!(response, [0xbe, 0xef, 0x92, 0xbe, 0xef, 0x92]);
+    }
+
+    #[test]
+    fn soft_reset_does_not_escape_the_pending_response_boundary() {
+        // Soft reset aborts a busy action under SHT45-RST-ABORT-001. Nothing in
+        // the sources declares that it also discards an unconsumed response, so
+        // that sequence stays an explicit model limitation rather than an
+        // inferred device behavior.
+        let mut model = Sht45Model::new(0x1234_5678).with_measurement_ticks(0xbeef, 0xbeef);
+
+        model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]).unwrap();
+        assert_eq!(
+            model.write(ADDRESS, &[SOFT_RESET_COMMAND]),
+            Err(Error::WriteWithPendingResponse)
+        );
+    }
+
+    #[test]
+    fn a_completed_reset_leaves_no_response_to_discard() {
+        // Reset returns no payload, so a command after the reset interval is an
+        // ordinary idle write and must not be caught by the pending-response
+        // boundary. The public soft-reset conformance trace depends on this.
+        let mut model = Sht45Model::new(0x1234_5678);
+        let mut response = [0; 6];
+
+        model.write(ADDRESS, &[SOFT_RESET_COMMAND]).unwrap();
+        model.advance_ns(SOFT_RESET_NS);
+        model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]).unwrap();
+        model.read(ADDRESS, &mut response).unwrap();
+        assert_eq!(response, [0x12, 0x34, 0x37, 0x56, 0x78, 0x7d]);
+    }
+
+    #[test]
+    fn busy_state_precedes_the_pending_response_boundary() {
+        let mut model = Sht45Model::new(0).with_measurement_ticks(0x1234, 0x5678);
+
+        model.write(ADDRESS, &[MEASURE_HIGH_COMMAND]).unwrap();
+        model.advance_ns(HIGH_MEASUREMENT_NS - 1);
+        assert_eq!(
+            model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]),
+            Err(Error::WriteWhileBusy)
+        );
     }
 
     #[test]

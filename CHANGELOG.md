@@ -59,6 +59,13 @@
   corruption discrimination, a no-op-delay busy check, and public soft-reset
   abort with serial recovery. This does not establish heater physics,
   application duty-cycle policy, or physical evidence.
+- **Breaking (model):** the behavioral model now rejects a command write that
+  would discard an unconsumed response, returning the new
+  `WriteWithPendingResponse` limitation instead of silently replacing an unread
+  serial frame or completed measurement or heater data. The previous behavior
+  chose an outcome for a transport sequence no retained source decides. Soft
+  reset is not exempt: it aborts a busy action under `SHT45-RST-ABORT-001`, but
+  nothing declares that it discards a completed response.
 
 ### Known issues
 
