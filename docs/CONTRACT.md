@@ -18,9 +18,10 @@ Refine this list when implementation creates review-blocking invariants; do not 
 
 ## Sources and device propositions
 
-Retained propositions are limited to facts consumed by the planned serial-number
-read and T/RH measurement work. They are supported by Sensirion Datasheet SHT4x,
-D1 Version 7.3 (June 2026), `HT_DS_Datasheet_SHT4x_V7.3.pdf`,
+Retained propositions are limited to facts consumed by the implemented
+serial-number read and planned T/RH measurement work. They are supported by
+Sensirion Datasheet SHT4x, D1 Version 7.3 (June 2026),
+`HT_DS_Datasheet_SHT4x_V7.3.pdf`,
 https://sensirion.com/media/documents/33FD6951/6A7C10A0/HT_DS_Datasheet_SHT4x_V7.3.pdf,
 retrieved 2026-08-19, 1,049,911 bytes, SHA-256
 `8db4a43f17149b76811cfb504caaeca4ef844ddc710cb9b45905c51c7ddfe3c2`.
@@ -57,28 +58,29 @@ this repository. Older SHT4x PDF revisions are not co-authority.
   `0xF6` at medium, or `0xE0` at low repeatability; the response is 6 bytes
   containing a 16-bit temperature word and CRC, followed by a 16-bit relative-
   humidity word and CRC (Table 8, section 4.3). Evidence state: supported.
-  Local consequence: the driver issues one repeatability-selected measurement
-  command and then one separate 6-byte `read`; it does not poll or use
-  `write_read`.
+  Planned driver requirement: a future measurement operation will issue one
+  repeatability-selected command and then one separate 6-byte `read`; it will
+  not poll or use `write_read`.
 - `SHT45-MEAS-TIME-001` — Maximum measurement durations are 1.6 ms at low,
   4.5 ms at medium, and 8.3 ms at high repeatability (Table 5, `tMEAS,*`).
   Typical values are not the completion bound. Evidence state: supported.
-  Local consequence: the driver waits the Table 5 maximum through the existing
-  `DelayNs` resource: 1600, 4500, or 8300 µs respectively, then performs the
-  6-byte read.
+  Planned driver requirement: a future measurement operation will wait the
+  Table 5 maximum through the existing `DelayNs` resource: 1600, 4500, or
+  8300 µs respectively, then perform the 6-byte read.
 - `SHT45-MEAS-CONV-001` — Temperature and relative humidity convert as
   `T °C = -45 + 175 * t_ticks / 65535` and
   `RH % = -6 + 125 * rh_ticks / 65535` (section 4.6, formulae 1–2).
   Uncropped results may lie outside 0–100 %RH; the °F formula is not consumed.
-  Evidence state: supported. Local consequence: the driver converts with
-  integer millidegree and milli-%RH formulas, without floating point, and
-  leaves results uncropped.
+  Evidence state: supported. Planned driver requirement: a future measurement
+  operation will convert with integer millidegree and milli-%RH formulas,
+  without floating point, and leave results uncropped.
 - `SHT45-MEAS-ONCE-001` — Measurement data can be received once and is deleted
   after the first acknowledged read header (section 4.1). Evidence state:
-  supported. Local consequence: the model uses explicitly injected measurement
-  ticks; a read while the device is busy before the maximum timing frontier is
-  a device NACK under `SHT45-I2C-XFER-001`, while a second read without a new
-  command is a model limitation rather than an invented payload or NACK.
+  supported. Planned model requirement: a future measurement model will use
+  explicitly injected measurement ticks; a read while the device is busy before
+  the maximum timing frontier will be a device NACK under
+  `SHT45-I2C-XFER-001`, while a second read without a new command will be a model
+  limitation rather than an invented payload or NACK.
 
 Add the smallest permanent proposition and exact provenance only when current
 implementation, model, conformance, physical evidence, or bug disposition
