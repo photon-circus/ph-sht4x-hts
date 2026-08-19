@@ -147,51 +147,36 @@ impl Sht45Model {
                 Err(Error::WriteWhileBusy)
             };
         }
-        let response_pending = matches!(self.pending, Some(PendingCommand::Serial))
-            || matches!(
-                self.pending,
-                Some(PendingCommand::Measurement { ready_at_ns, .. })
-                    | Some(PendingCommand::Heater { ready_at_ns, .. })
-                    if self.elapsed_ns >= ready_at_ns
-            );
-        if response_pending {
-            return Err(Error::WriteWithPendingResponse);
-        }
         if bytes.len() != 1 {
             return Err(Error::InvalidWriteLength {
                 expected: 1,
                 actual: bytes.len(),
             });
         }
-        match bytes[0] {
-            SOFT_RESET_COMMAND => {
-                self.pending = Some(PendingCommand::Reset {
-                    ready_at_ns: self.elapsed_ns.saturating_add(SOFT_RESET_NS),
-                });
-                self.measurement_consumed = false;
-                Ok(())
-            }
-            SERIAL_NUMBER_COMMAND => {
-                self.pending = Some(PendingCommand::Serial);
-                self.measurement_consumed = false;
-                Ok(())
-            }
-            MEASURE_HIGH_COMMAND | MEASURE_MEDIUM_COMMAND | MEASURE_LOW_COMMAND => {
+
+        // Resolve the write into the state it would produce before touching
+        // anything. A frame the device would not act on — a malformed length, an
+        // unsupported command, a measurement with no injected ticks — cannot
+        // discard a pending response, so its own error has to survive the
+        // pending-response guard below rather than be masked by it.
+        let next = match bytes[0] {
+            SOFT_RESET_COMMAND => PendingCommand::Reset {
+                ready_at_ns: self.elapsed_ns.saturating_add(SOFT_RESET_NS),
+            },
+            SERIAL_NUMBER_COMMAND => PendingCommand::Serial,
+            command @ (MEASURE_HIGH_COMMAND | MEASURE_MEDIUM_COMMAND | MEASURE_LOW_COMMAND) => {
                 let ticks = self
                     .measurement_ticks
                     .ok_or(Error::MissingMeasurementTicks)?;
-                let duration_ns = match bytes[0] {
+                let duration_ns = match command {
                     MEASURE_HIGH_COMMAND => HIGH_MEASUREMENT_NS,
                     MEASURE_MEDIUM_COMMAND => MEDIUM_MEASUREMENT_NS,
-                    MEASURE_LOW_COMMAND => LOW_MEASUREMENT_NS,
-                    _ => unreachable!(),
+                    _ => LOW_MEASUREMENT_NS,
                 };
-                self.pending = Some(PendingCommand::Measurement {
+                PendingCommand::Measurement {
                     ready_at_ns: self.elapsed_ns.saturating_add(duration_ns),
                     ticks,
-                });
-                self.measurement_consumed = false;
-                Ok(())
+                }
             }
             command
                 if HEATER_LONG_COMMANDS.contains(&command)
@@ -205,15 +190,28 @@ impl Sht45Model {
                 } else {
                     SHORT_HEATER_NS
                 };
-                self.pending = Some(PendingCommand::Heater {
+                PendingCommand::Heater {
                     ready_at_ns: self.elapsed_ns.saturating_add(duration_ns),
                     ticks,
-                });
-                self.measurement_consumed = false;
-                Ok(())
+                }
             }
-            command => Err(Error::UnsupportedCommand(command)),
+            command => return Err(Error::UnsupportedCommand(command)),
+        };
+
+        let response_pending = matches!(self.pending, Some(PendingCommand::Serial))
+            || matches!(
+                self.pending,
+                Some(PendingCommand::Measurement { ready_at_ns, .. }
+                    | PendingCommand::Heater { ready_at_ns, .. })
+                    if self.elapsed_ns >= ready_at_ns
+            );
+        if response_pending {
+            return Err(Error::WriteWithPendingResponse);
         }
+
+        self.pending = Some(next);
+        self.measurement_consumed = false;
+        Ok(())
     }
 
     /// Fill the modeled six-byte response, including its STOP boundary.
@@ -621,6 +619,58 @@ mod tests {
             model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]),
             Err(Error::WriteWhileBusy)
         );
+    }
+
+    #[test]
+    fn a_frame_the_device_would_not_act_on_keeps_its_own_error() {
+        // None of these would discard the pending serial frame, so none of them
+        // may be reported as `WriteWithPendingResponse`.
+        let cases: [(&[u8], Error); 3] = [
+            (
+                &[],
+                Error::InvalidWriteLength {
+                    expected: 1,
+                    actual: 0,
+                },
+            ),
+            (
+                &[SERIAL_NUMBER_COMMAND, 0x00],
+                Error::InvalidWriteLength {
+                    expected: 1,
+                    actual: 2,
+                },
+            ),
+            (&[0x2c], Error::UnsupportedCommand(0x2c)),
+        ];
+
+        for (bytes, expected) in cases {
+            let mut model = Sht45Model::new(0x1234_5678).with_measurement_ticks(0xbeef, 0xbeef);
+            let mut response = [0; 6];
+            model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]).unwrap();
+
+            assert_eq!(model.write(ADDRESS, bytes), Err(expected));
+
+            // And the response it could not have discarded is still there.
+            model.read(ADDRESS, &mut response).unwrap();
+            assert_eq!(response, [0x12, 0x34, 0x37, 0x56, 0x78, 0x7d]);
+        }
+    }
+
+    #[test]
+    fn missing_ticks_are_reported_over_a_pending_response() {
+        // A measurement with no injected ticks is a model-input error. The model
+        // cannot act on it, so it cannot discard the pending frame either.
+        let mut model = Sht45Model::new(0x1234_5678);
+        let mut response = [0; 6];
+        model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]).unwrap();
+
+        assert_eq!(
+            model.write(ADDRESS, &[MEASURE_HIGH_COMMAND]),
+            Err(Error::MissingMeasurementTicks)
+        );
+
+        model.read(ADDRESS, &mut response).unwrap();
+        assert_eq!(response, [0x12, 0x34, 0x37, 0x56, 0x78, 0x7d]);
     }
 
     #[test]

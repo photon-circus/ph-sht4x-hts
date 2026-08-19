@@ -38,7 +38,10 @@ discard an unconsumed response — an unread serial frame, or measurement or
 heater data that has reached its frontier — returns
 `WriteWithPendingResponse` and commits nothing. No retained source decides what
 the device does for that sequence, including for soft reset, so it is an
-explicit limitation rather than a modeled behavior.
+explicit limitation rather than a modeled behavior. A frame the device would not
+act on keeps its own error: a malformed length, an unsupported command, or a
+measurement with no injected ticks is reported as such even while a response is
+pending, because it could not have discarded anything.
 
 The model exposes separate write and read operations, representing the
 two-STOP transaction domain. Combined `write_read` or repeated-start behavior
