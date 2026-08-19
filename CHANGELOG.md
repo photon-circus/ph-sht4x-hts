@@ -9,7 +9,8 @@
   later driver and model work, including the command execution timing for the
   response read.
 - Added the implementation-tested serial-number read through abstract async I2C,
-  including mandatory CRC validation and distinct no-acknowledge errors.
+  including the device-required command delay, mandatory CRC validation, and
+  distinct no-acknowledge errors.
 
 ### Known issues
 

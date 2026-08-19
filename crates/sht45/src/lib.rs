@@ -2,13 +2,14 @@
 #![forbid(unsafe_code)]
 #![doc = include_str!("../README.md")]
 
-use embedded_hal_async::i2c::I2c;
+use embedded_hal_async::{delay::DelayNs, i2c::I2c};
 
 /// The fixed 7-bit address of the supported SHT45-AD1B device.
 pub const ADDRESS: u8 = 0x44;
 
 const SERIAL_NUMBER_COMMAND: u8 = 0x89;
 const SERIAL_NUMBER_RESPONSE_LEN: usize = 6;
+const SERIAL_NUMBER_DURATION_US: u32 = 10;
 
 /// Errors returned by the SHT45 driver.
 #[derive(Debug, PartialEq, Eq)]
@@ -25,27 +26,31 @@ pub enum Error<E> {
     },
 }
 
-/// An SHT45 connected to one abstract asynchronous I2C bus.
-pub struct Sht45<I2C> {
+/// An SHT45 connected to abstract asynchronous I2C and delay resources.
+pub struct Sht45<I2C, DELAY> {
     i2c: I2C,
+    delay: DELAY,
 }
 
-impl<I2C> Sht45<I2C> {
+impl<I2C, DELAY> Sht45<I2C, DELAY> {
     /// Create a driver for the SHT45-AD1B at address `0x44`.
-    pub const fn new(i2c: I2C) -> Self {
-        Self { i2c }
+    pub const fn new(i2c: I2C, delay: DELAY) -> Self {
+        Self { i2c, delay }
     }
 
     /// Read the device's 32-bit transmission-order serial number.
     pub async fn read_serial_number<E>(&mut self) -> Result<u32, Error<E>>
     where
         I2C: I2c<Error = E>,
+        DELAY: DelayNs,
         E: embedded_hal::i2c::Error,
     {
         self.i2c
             .write(ADDRESS, &[SERIAL_NUMBER_COMMAND])
             .await
             .map_err(map_i2c_error)?;
+
+        self.delay.delay_us(SERIAL_NUMBER_DURATION_US).await;
 
         let mut response = [0; SERIAL_NUMBER_RESPONSE_LEN];
         self.i2c
@@ -72,9 +77,9 @@ impl<I2C> Sht45<I2C> {
         Ok((u32::from(word0) << 16) | u32::from(word1))
     }
 
-    /// Return the underlying I2C bus.
-    pub fn release(self) -> I2C {
-        self.i2c
+    /// Return the underlying I2C bus and delay resources.
+    pub fn release(self) -> (I2C, DELAY) {
+        (self.i2c, self.delay)
     }
 }
 
@@ -110,7 +115,7 @@ mod tests {
     use super::*;
     use embedded_hal::i2c::{ErrorType, Operation, SevenBitAddress};
     use futures_lite::future::block_on;
-    use std::{vec, vec::Vec};
+    use std::{cell::RefCell, rc::Rc, vec, vec::Vec};
 
     #[derive(Debug, PartialEq, Eq)]
     enum FakeError {
@@ -130,13 +135,14 @@ mod tests {
     }
 
     #[derive(Debug, PartialEq, Eq)]
-    enum Transaction {
+    enum Event {
         Write(SevenBitAddress, Vec<u8>),
+        DelayNs(u32),
         Read(SevenBitAddress, usize),
     }
 
     struct FakeI2c {
-        transactions: Vec<Transaction>,
+        events: Rc<RefCell<Vec<Event>>>,
         response: [u8; 6],
         read_error: Option<FakeError>,
     }
@@ -154,12 +160,14 @@ mod tests {
             for operation in operations {
                 match operation {
                     Operation::Write(bytes) => {
-                        self.transactions
-                            .push(Transaction::Write(address, bytes.to_vec()));
+                        self.events
+                            .borrow_mut()
+                            .push(Event::Write(address, bytes.to_vec()));
                     }
                     Operation::Read(bytes) => {
-                        self.transactions
-                            .push(Transaction::Read(address, bytes.len()));
+                        self.events
+                            .borrow_mut()
+                            .push(Event::Read(address, bytes.len()));
                         if let Some(error) = self.read_error.take() {
                             return Err(error);
                         }
@@ -171,12 +179,29 @@ mod tests {
         }
     }
 
-    fn fake(response: [u8; 6]) -> FakeI2c {
-        FakeI2c {
-            transactions: Vec::new(),
-            response,
-            read_error: None,
+    struct FakeDelay {
+        events: Rc<RefCell<Vec<Event>>>,
+    }
+
+    impl DelayNs for FakeDelay {
+        async fn delay_ns(&mut self, ns: u32) {
+            self.events.borrow_mut().push(Event::DelayNs(ns));
         }
+    }
+
+    fn fake(response: [u8; 6]) -> (FakeI2c, FakeDelay, Rc<RefCell<Vec<Event>>>) {
+        let events = Rc::new(RefCell::new(Vec::new()));
+        (
+            FakeI2c {
+                events: Rc::clone(&events),
+                response,
+                read_error: None,
+            },
+            FakeDelay {
+                events: Rc::clone(&events),
+            },
+            events,
+        )
     }
 
     #[test]
@@ -186,14 +211,15 @@ mod tests {
 
     #[test]
     fn reads_serial_with_two_transactions_and_validates_crc() {
-        let fake = fake([0xbe, 0xef, 0x92, 0xbe, 0xef, 0x92]);
-        let mut sensor = Sht45::new(fake);
+        let (i2c, delay, events) = fake([0xbe, 0xef, 0x92, 0xbe, 0xef, 0x92]);
+        let mut sensor = Sht45::new(i2c, delay);
         assert_eq!(block_on(sensor.read_serial_number()), Ok(0xbeef_beef));
         assert_eq!(
-            sensor.release().transactions,
+            *events.borrow(),
             vec![
-                Transaction::Write(ADDRESS, vec![SERIAL_NUMBER_COMMAND]),
-                Transaction::Read(ADDRESS, 6),
+                Event::Write(ADDRESS, vec![SERIAL_NUMBER_COMMAND]),
+                Event::DelayNs(10_000),
+                Event::Read(ADDRESS, 6),
             ]
         );
     }
@@ -203,7 +229,8 @@ mod tests {
         for index in [2, 5] {
             let mut response = [0xbe, 0xef, 0x92, 0xbe, 0xef, 0x92];
             response[index] ^= 1;
-            let mut sensor = Sht45::new(fake(response));
+            let (i2c, delay, _) = fake(response);
+            let mut sensor = Sht45::new(i2c, delay);
             assert!(matches!(
                 block_on(sensor.read_serial_number()),
                 Err(Error::Crc { .. })
@@ -213,9 +240,9 @@ mod tests {
 
     #[test]
     fn surfaces_nack_as_not_acknowledge_error() {
-        let mut fake = fake([0; 6]);
-        fake.read_error = Some(FakeError::NoAcknowledge);
-        let mut sensor = Sht45::new(fake);
+        let (mut i2c, delay, _) = fake([0; 6]);
+        i2c.read_error = Some(FakeError::NoAcknowledge);
+        let mut sensor = Sht45::new(i2c, delay);
         assert_eq!(
             block_on(sensor.read_serial_number()),
             Err(Error::NoAcknowledge(FakeError::NoAcknowledge))
@@ -224,9 +251,9 @@ mod tests {
 
     #[test]
     fn preserves_non_nack_bus_error() {
-        let mut fake = fake([0; 6]);
-        fake.read_error = Some(FakeError::Bus);
-        let mut sensor = Sht45::new(fake);
+        let (mut i2c, delay, _) = fake([0; 6]);
+        i2c.read_error = Some(FakeError::Bus);
+        let mut sensor = Sht45::new(i2c, delay);
         assert_eq!(
             block_on(sensor.read_serial_number()),
             Err(Error::I2c(FakeError::Bus))

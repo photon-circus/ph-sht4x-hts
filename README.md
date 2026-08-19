@@ -18,10 +18,11 @@ It does not own board topology; concrete bus/GPIO/power resources; sampling cade
 ## Supported scope
 
 - Device/family: Sensirion SHT45
-- Transport: async I2C
+- Transport: abstract async I2C and delay resources
 - Rust: `1.92.0` on the pinned `1.92.0` toolchain
 - Runtime posture: `no_std`, no allocation, and no unsafe code
-- Supported operation: implementation-tested serial-number read over abstract async I2C
+- Supported operation: implementation-tested serial-number read over abstract
+  async I2C with the device-required command delay
 
 ## Quick start
 
