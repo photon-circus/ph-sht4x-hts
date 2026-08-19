@@ -60,6 +60,23 @@
   abort with serial recovery. This does not establish heater physics,
   application duty-cycle policy, or physical evidence.
 
+### Changed
+
+- Replaced the driver's registry keywords with terms a reader would search for —
+  `sht45`, `sensirion`, `humidity`, `i2c`, `embedded-hal-driver` — dropping
+  `embedded` and `no-std`, which duplicated declared categories, and `hts`,
+  which is an organization class token rather than a search term.
+- Removed lifecycle and distribution status from the driver's manifest
+  `description`, which now says what the crate provides. Status is carried by the
+  packaged README disclosure that crates.io and docs.rs render, and by
+  `publish = false`; the manifest was a second copy of the same facts to keep
+  true, and status wording embedded in registry metadata is exactly what goes
+  stale first.
+- Removed `keywords` and `categories` from the model and conformance manifests,
+  and the empty `[dependencies]` table from the model manifest. Those fields
+  classify a crate for a registry neither package enters, and the model's
+  dependency-free posture reads more clearly by omission.
+
 ### Known issues
 
 - Model conformance covers every current public device operation; no operation

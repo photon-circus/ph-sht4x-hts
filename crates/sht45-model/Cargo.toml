@@ -9,7 +9,9 @@ description = "Unpublished independent behavioral model for selected SHT45 opera
 repository.workspace = true
 readme = "README.md"
 publish = false
-keywords = ["embedded", "sht45", "model"]
-categories = ["embedded", "hardware-support"]
-
-[dependencies]
+# No `keywords` or `categories`: those fields classify a crate for a registry
+# this package does not enter.
+#
+# No dependency tables either. The model is derived from the datasheet and
+# depends on nothing at all, which is easier to see when the manifest says so by
+# omission than when an empty `[dependencies]` header sits here.

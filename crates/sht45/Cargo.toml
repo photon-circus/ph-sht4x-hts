@@ -5,11 +5,14 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 authors.workspace = true
-description = "Incubating unpublished async no_std Rust driver for the Sensirion SHT45 humidity and temperature sensor over abstract I2C."
+description = "Async no_std driver for the Sensirion SHT45 humidity and temperature sensor over abstract I2C."
 repository.workspace = true
+# The README carries the lifecycle, distribution, model-conformance, and
+# physical-evidence disclosure, and crates.io and docs.rs render it. Restating
+# status in `description` would create a second copy to keep true.
 readme = "README.md"
 publish = false
-keywords = ["embedded", "no-std", "sht45", "hts"]
+keywords = ["sht45", "sensirion", "humidity", "i2c", "embedded-hal-driver"]
 categories = ["embedded", "hardware-support", "no-std"]
 
 [dependencies]
