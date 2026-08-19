@@ -74,6 +74,20 @@ package checks cover the working tree instead of the committed one and say so.
 The release process runs from a clean checkout with git present, where no such
 notice can appear.
 
+## Contributing, security, and releases
+
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — the responsibility boundary, the
+  proposition rule every device fact goes through, the evidence states and what
+  may not be collapsed, and what a bug report needs.
+- [`SECURITY.md`](SECURITY.md) — private reporting, and what is and is not in
+  scope for a `no_std`, allocation-free, unsafe-free driver.
+- [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) — expected behavior in project
+  spaces.
+- [`RELEASING.md`](RELEASING.md) — the version rules, the ordinary-release gate,
+  and the exact steps. Publication is a maintainer decision and never a CI side
+  effect; this repository is currently unpublished.
+- [`AGENTS.md`](AGENTS.md) — additional constraints for coding agents.
+
 ## License
 
 MIT

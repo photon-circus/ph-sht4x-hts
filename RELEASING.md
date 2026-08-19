@@ -1,0 +1,168 @@
+# Releasing ph-sht45-hts
+
+This is the release contract for this repository. It implements Repository
+Standards v0.1 section 17 and the Peripheral Driver Release and Evidence
+Profile's software publication gate.
+
+Publication is a maintainer decision and never a CI side effect. Registry
+versions are permanent and cannot be overwritten.
+
+## Current distribution state
+
+The workspace is at `0.1.0-incubating.1` with `publish = false` on all three
+manifests. Nothing has been published or tagged. The canonical gate asserts
+both facts on every run, so an accidental version drift or an unlocked manifest
+fails before it reaches a release.
+
+Moving off that state is the deliberate act this document governs.
+
+## What each dimension means
+
+Three dimensions are reported independently and must never be collapsed:
+
+| Dimension | Values | Current |
+| --- | --- | --- |
+| Distribution | unpublished, SemVer prerelease, ordinary release | Unpublished |
+| Software maturity | Experimental, Incubating, Active, Maintenance, Archived | Incubating |
+| Evidence | implementation-tested, model-conformant, physically observed, qualified | Model-conformant for every public operation; no physical evidence |
+
+Publishing does not promote the lifecycle. Promoting the lifecycle does not
+create evidence. Neither authorizes a hardware-support claim.
+
+## Version rules
+
+- The manifest version carries a prerelease identifier matching the lifecycle:
+  `0.1.0-incubating.N` while Incubating.
+- A later prerelease uses a higher numeric core, such as `0.1.1-incubating.1`.
+  A lifecycle change must never decrease SemVer precedence.
+- Removing the prerelease component is an intentional software-release
+  transition governed by the ordinary-release gate below. It is not a
+  hardware-qualification claim, and `0.1.0` is not an experimental publication
+  merely because its major version is zero.
+- Before 1.0 a breaking change increments the minor version. When compatibility
+  impact is uncertain, take the larger defensible bump.
+- All three workspace manifests move together; the gate enforces it.
+
+## Gate for an ordinary release
+
+Before publishing a version with no prerelease component, all of the following
+must hold. Each is a fact about the repository, not an intention:
+
+- A bounded public API, documented limitations, and accurate lifecycle and
+  evidence status.
+- Implementation-focused tests and supported-target compilation proportional to
+  the driver.
+- A passing `./scripts/ci.sh`.
+- A changelog and this release process.
+- A verified packaged artifact, assembled by an intentional maintainer action.
+
+An ordinary release does **not** require a complete behavioral model, physical
+evidence, hardware qualification, or `ph-hil` adoption — and must not be
+described as establishing any of them.
+
+## Release branches
+
+A `release/<semver>` branch, including the prerelease component, is required
+when several accepted pull requests must be assembled into one published
+version. A release represented by a single independently verified pull request
+may use the short path below.
+
+For an assembled release:
+
+1. Assemble accepted changes on `release/<semver>`.
+2. Open the merge-back pull request as a draft early.
+3. Preserve review history when routing accepted pull requests.
+4. Keep later work off the release branch, and apply shared fixes
+   upstream-first.
+5. Close the changelog only after the release changes are assembled.
+6. Run the full gate against the combined release, not against its component
+   pull requests.
+7. Record the evidence environment.
+8. Inspect the exact package contents.
+9. Tag the verified release commit.
+10. Publish, then create the GitHub Release.
+11. Merge the release branch back promptly.
+12. Reopen `Unreleased` and delete the release branch.
+
+The artifact being released, not its component pull requests, is what must be
+verified.
+
+## Steps
+
+Run from a clean checkout of the commit to be released.
+
+**1. Settle the changelog.** Move accumulated `## Unreleased` entries under a
+`## X.Y.Z - YYYY-MM-DD` heading, dated in UTC. Preserve unresolved known
+limitations; do not quietly drop them. Mark breaking changes `**Breaking:**`.
+A release introducing a substantial capability carries a value statement
+immediately below the heading saying why it was added, which limitation it
+addresses, what value it provides, and what it costs. A list of APIs is not a
+value statement.
+
+**2. Confirm the status disclosures are true.** The root README, the packaged
+README, and `docs/CONTRACT.md` must state the actual lifecycle, distribution,
+model-conformance scope, and physical-evidence status of the commit being
+released. Partial model coverage names covered and uncovered operations. A link
+to an unpackaged or private record does not satisfy this.
+
+**3. Set the version.** Update all three manifests, then `cargo update
+--workspace` so `Cargo.lock` matches.
+
+**4. Unlock publication.** Replace `publish = false` with `publish =
+["crates-io"]` in `crates/sht45/Cargo.toml` only. The model and conformance
+packages stay unpublished. Update the expected version in `scripts/ci.sh`, and
+its publication assertion for the driver manifest, in the same commit — the
+gate is meant to fail when the manifest and the intended state disagree.
+
+**5. Verify.**
+
+```sh
+./scripts/ci.sh
+```
+
+Record the toolchain, host, and any skipped check. A skipped check is not a
+passed check.
+
+**6. Inspect the artifact.**
+
+```sh
+cargo package --locked --manifest-path crates/sht45/Cargo.toml --list
+```
+
+Confirm the packaged set contains the licence, README, and sources, and no
+vendor material. The vendor datasheet is never committed and never packaged.
+
+**7. Tag the verified commit.** The tag is the full SemVer with a leading `v`
+and nothing else:
+
+```sh
+git tag -a v0.1.0-incubating.2 -m 'ph-sht45-hts 0.1.0-incubating.2'
+git push origin v0.1.0-incubating.2
+```
+
+**8. Publish.**
+
+```sh
+cargo publish --locked --manifest-path crates/sht45/Cargo.toml
+```
+
+**9. Create the GitHub Release** on that tag, containing the corresponding
+changelog section. **Mark it as a prerelease whenever the version has a
+prerelease component.** The tag and the packaged version must match exactly
+apart from the leading `v`.
+
+**10. Reopen `Unreleased`** in `CHANGELOG.md`.
+
+## After publishing
+
+Publication reserves the crate name, enables opt-in dependency evaluation, and
+invites collaboration. It does not authorize a physical-device support claim
+and does not elevate any evidence state. Update `SECURITY.md`'s supported
+versions to name the published version.
+
+## Yanking
+
+Yank only when a published version is actively harmful — unsound behavior, a
+security defect, or a wrong evidence claim in the packaged README. Yanking does
+not delete the version. Record the reason in `CHANGELOG.md` and publish a fixed
+version rather than relying on the yank alone.

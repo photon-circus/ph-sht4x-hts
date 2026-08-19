@@ -183,6 +183,17 @@
 
 - Recorded the repository's load-bearing invariants and traps in `AGENTS.md`.
 
+- Added `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, and
+  `RELEASING.md`, written to the bar a public, crates.io-published repository is
+  held to rather than to the minimum an unpublished private one currently
+  requires. Each is repository-specific: the contribution guide carries the
+  proposition rule and the evidence states that must not be collapsed, the
+  security policy scopes itself to a `no_std`, allocation-free, unsafe-free
+  driver on a board-local bus, and the release contract carries the version
+  rules, the ordinary-release gate, and the publication steps.
+- These documents change no status. The repository remains private, Incubating,
+  and unpublished, and all three manifests retain `publish = false`.
+
 ### Known issues
 
 - Model conformance covers every current public device operation; no operation
