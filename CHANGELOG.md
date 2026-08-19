@@ -49,6 +49,11 @@
 - Added host-only public driver/model conformance coverage for soft-reset abort
   of an in-flight measurement, the routed 1 ms delay, and serial recovery;
   this does not establish physical reset timing or hardware evidence.
+- Added the implementation-tested public heater-pulse operation for all six
+  power/duration combinations, with complete long/short waits, mandatory CRC
+  validation, integer T/RH readout, and distinct NACK/bus errors. Heater model
+  conformance, application duty-cycle policy, and physical evidence remain
+  unclaimed.
 
 ### Known issues
 

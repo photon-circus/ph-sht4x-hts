@@ -13,6 +13,8 @@ const SERIAL_NUMBER_DURATION_US: u32 = 10;
 const MEASUREMENT_RESPONSE_LEN: usize = 6;
 const SOFT_RESET_COMMAND: u8 = 0x94;
 const SOFT_RESET_DURATION_US: u32 = 1_000;
+const HEATER_LONG_DURATION_US: u32 = 1_108_300;
+const HEATER_SHORT_DURATION_US: u32 = 118_300;
 
 /// Errors returned by the SHT45 driver.
 #[derive(Debug, PartialEq, Eq)]
@@ -38,6 +40,26 @@ pub enum Repeatability {
     Medium,
     /// Low repeatability: maximum measurement duration 1.6 ms.
     Low,
+}
+
+/// Heater power selected for one bounded heater pulse.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeaterPower {
+    /// High-power heater pulse.
+    High,
+    /// Medium-power heater pulse.
+    Medium,
+    /// Low-power heater pulse.
+    Low,
+}
+
+/// Duration selected for one bounded heater pulse.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeaterDuration {
+    /// Long pulse: 1.1 s heating followed by a high-repeatability measurement.
+    Long,
+    /// Short pulse: 0.11 s heating followed by a high-repeatability measurement.
+    Short,
 }
 
 /// One temperature and relative-humidity measurement.
@@ -145,26 +167,47 @@ impl<I2C, DELAY> Sht45<I2C, DELAY> {
             .await
             .map_err(map_i2c_error)?;
 
-        let temperature = u16::from_be_bytes([response[0], response[1]]);
-        let humidity = u16::from_be_bytes([response[3], response[4]]);
-        for (word, (value, actual)) in [(temperature, response[2]), (humidity, response[5])]
-            .into_iter()
-            .enumerate()
-        {
-            let expected = crc8(value.to_be_bytes());
-            if expected != actual {
-                return Err(Error::Crc {
-                    word,
-                    expected,
-                    actual,
-                });
-            }
-        }
+        decode_measurement(response)
+    }
 
-        Ok(Measurement {
-            t_mdeg_c: convert_temperature(temperature),
-            rh_milli_pct: convert_humidity(humidity),
-        })
+    /// Run one heater pulse and return its on-chip high-repeatability measurement.
+    ///
+    /// The caller owns application-level heater policy, including pulse cadence and
+    /// duty-cycle limiting. This operation owns the selected command's complete
+    /// device-required wait and response read.
+    pub async fn heater_pulse<E>(
+        &mut self,
+        power: HeaterPower,
+        duration: HeaterDuration,
+    ) -> Result<Measurement, Error<E>>
+    where
+        I2C: I2c<Error = E>,
+        DELAY: DelayNs,
+        E: embedded_hal::i2c::Error,
+    {
+        let (command, duration_us) = match (duration, power) {
+            (HeaterDuration::Long, HeaterPower::High) => (0x39, HEATER_LONG_DURATION_US),
+            (HeaterDuration::Long, HeaterPower::Medium) => (0x2f, HEATER_LONG_DURATION_US),
+            (HeaterDuration::Long, HeaterPower::Low) => (0x1e, HEATER_LONG_DURATION_US),
+            (HeaterDuration::Short, HeaterPower::High) => (0x32, HEATER_SHORT_DURATION_US),
+            (HeaterDuration::Short, HeaterPower::Medium) => (0x24, HEATER_SHORT_DURATION_US),
+            (HeaterDuration::Short, HeaterPower::Low) => (0x15, HEATER_SHORT_DURATION_US),
+        };
+
+        self.i2c
+            .write(ADDRESS, &[command])
+            .await
+            .map_err(map_i2c_error)?;
+
+        self.delay.delay_us(duration_us).await;
+
+        let mut response = [0; MEASUREMENT_RESPONSE_LEN];
+        self.i2c
+            .read(ADDRESS, &mut response)
+            .await
+            .map_err(map_i2c_error)?;
+
+        decode_measurement(response)
     }
 
     /// Return the underlying I2C bus and delay resources.
@@ -204,6 +247,31 @@ fn convert_temperature(ticks: u16) -> i32 {
 
 fn convert_humidity(ticks: u16) -> i32 {
     -6_000 + (125_000_i64 * i64::from(ticks) / 65_535) as i32
+}
+
+fn decode_measurement<E>(
+    response: [u8; MEASUREMENT_RESPONSE_LEN],
+) -> Result<Measurement, Error<E>> {
+    let temperature = u16::from_be_bytes([response[0], response[1]]);
+    let humidity = u16::from_be_bytes([response[3], response[4]]);
+    for (word, (value, actual)) in [(temperature, response[2]), (humidity, response[5])]
+        .into_iter()
+        .enumerate()
+    {
+        let expected = crc8(value.to_be_bytes());
+        if expected != actual {
+            return Err(Error::Crc {
+                word,
+                expected,
+                actual,
+            });
+        }
+    }
+
+    Ok(Measurement {
+        t_mdeg_c: convert_temperature(temperature),
+        rh_milli_pct: convert_humidity(humidity),
+    })
 }
 
 #[cfg(test)]
@@ -360,6 +428,110 @@ mod tests {
                 rh_milli_pct: 87_230,
             })
         );
+    }
+
+    #[test]
+    fn runs_each_heater_pulse_with_the_required_command_and_delay() {
+        for (power, duration, command, delay_ns) in [
+            (HeaterPower::High, HeaterDuration::Long, 0x39, 1_108_300_000),
+            (
+                HeaterPower::Medium,
+                HeaterDuration::Long,
+                0x2f,
+                1_108_300_000,
+            ),
+            (HeaterPower::Low, HeaterDuration::Long, 0x1e, 1_108_300_000),
+            (HeaterPower::High, HeaterDuration::Short, 0x32, 118_300_000),
+            (
+                HeaterPower::Medium,
+                HeaterDuration::Short,
+                0x24,
+                118_300_000,
+            ),
+            (HeaterPower::Low, HeaterDuration::Short, 0x15, 118_300_000),
+        ] {
+            let (i2c, delay, events) = fake([0xbe, 0xef, 0x92, 0xbe, 0xef, 0x92]);
+            let mut sensor = Sht45::new(i2c, delay);
+
+            assert_eq!(
+                block_on(sensor.heater_pulse(power, duration)),
+                Ok(Measurement {
+                    t_mdeg_c: 85_523,
+                    rh_milli_pct: 87_230,
+                })
+            );
+            assert_eq!(
+                *events.borrow(),
+                vec![
+                    Event::Write(ADDRESS, vec![command]),
+                    Event::DelayNs(delay_ns),
+                    Event::Read(ADDRESS, 6),
+                ]
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_each_corrupt_heater_measurement_crc() {
+        for index in [2, 5] {
+            let mut response = [0xbe, 0xef, 0x92, 0xbe, 0xef, 0x92];
+            response[index] ^= 1;
+            let (i2c, delay, _) = fake(response);
+            let mut sensor = Sht45::new(i2c, delay);
+            assert!(matches!(
+                block_on(sensor.heater_pulse(HeaterPower::Low, HeaterDuration::Short)),
+                Err(Error::Crc { .. })
+            ));
+        }
+    }
+
+    #[test]
+    fn maps_heater_write_errors_without_delaying_or_reading() {
+        for (write_error, expected) in [
+            (
+                FakeError::NoAcknowledge,
+                Error::NoAcknowledge(FakeError::NoAcknowledge),
+            ),
+            (FakeError::Bus, Error::I2c(FakeError::Bus)),
+        ] {
+            let (mut i2c, delay, events) = fake([0; 6]);
+            i2c.write_error = Some(write_error);
+            let mut sensor = Sht45::new(i2c, delay);
+
+            assert_eq!(
+                block_on(sensor.heater_pulse(HeaterPower::High, HeaterDuration::Long)),
+                Err(expected)
+            );
+            assert_eq!(*events.borrow(), vec![Event::Write(ADDRESS, vec![0x39])]);
+        }
+    }
+
+    #[test]
+    fn surfaces_heater_read_errors_after_the_required_wait() {
+        for (read_error, expected) in [
+            (
+                FakeError::NoAcknowledge,
+                Error::NoAcknowledge(FakeError::NoAcknowledge),
+            ),
+            (FakeError::Bus, Error::I2c(FakeError::Bus)),
+        ] {
+            let (mut i2c, delay, events) = fake([0; 6]);
+            i2c.read_error = Some(read_error);
+            let mut sensor = Sht45::new(i2c, delay);
+
+            assert_eq!(
+                block_on(sensor.heater_pulse(HeaterPower::Medium, HeaterDuration::Short)),
+                Err(expected)
+            );
+            assert_eq!(
+                *events.borrow(),
+                vec![
+                    Event::Write(ADDRESS, vec![0x24]),
+                    Event::DelayNs(118_300_000),
+                    Event::Read(ADDRESS, 6),
+                ]
+            );
+        }
     }
 
     #[test]

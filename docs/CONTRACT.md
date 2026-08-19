@@ -104,15 +104,16 @@ this repository. Older SHT4x PDF revisions are not co-authority.
   `0x1E` for long pulses, and `0x32`, `0x24`, and `0x15` for short pulses.
   Each returns the same six-byte high-repeatability temperature/relative-
   humidity frame with one CRC byte per 16-bit word (Table 8). Evidence state:
-  supported. Local consequence: a future driver selects one command and reads
-  one six-byte response; the independent model accepts the six commands with
-  explicit conversion ticks and independently owns the response CRC frame.
+  supported. Driver requirement: the public heater-pulse operation selects one
+  command by power and duration and reads one six-byte response; the independent
+  model accepts the six commands with explicit conversion ticks and independently
+  owns the response CRC frame.
 - `SHT45-HEAT-TIME-001` — The maximum heater time is 1.1 s for a long pulse and
   0.11 s for a short pulse, followed by the high-repeatability measurement
   maximum of 8.3 ms (`tHeater`, `tMEAS,h`, Table 5). Typical pulse widths and
-  watt figures are not completion bounds. Evidence state: supported. Local
-  consequence: a future driver waits 1_108_300 µs or 118_300 µs before its
-  single six-byte read; the independent model returns `Busy` before the
+  watt figures are not completion bounds. Evidence state: supported. Driver
+  requirement: the heater-pulse operation waits 1_108_300 µs or 118_300 µs
+  before its single six-byte read; the independent model returns `Busy` before the
   corresponding frontier and makes the injected six-byte frame available at
   that frontier.
 - `SHT45-HEAT-SEQ-001` — The heater sequence is heater on, timer expiry,
@@ -133,11 +134,12 @@ validation assignment.
 
 ## Evidence posture
 
-- Implementation-tested: serial-number and T/RH measurement sequencing,
-  response decoding, CRC validation, integer conversion, and error mapping
-  through a scripted abstract I2C fake, plus soft-reset write sequencing,
-  1000 µs delay, and I2C/NACK error mapping. This does not establish device
-  behavior or physical reset timing.
+- Implementation-tested: serial-number, T/RH measurement, and heater-pulse
+  sequencing, response decoding, CRC validation, integer conversion, and error mapping
+  through a scripted abstract I2C fake, including all six heater command bytes
+  and both complete heater waits, plus soft-reset write sequencing, 1000 µs
+  delay, and I2C/NACK error mapping. This does not establish model conformance,
+  device behavior, physical timing, or heater duty-cycle policy.
 - Model-only: the independent model covers soft reset while idle, measuring, or
   heating, measurement/heater abort, the 1 ms reset-busy frontier, heater and
   measurement busy frontiers, one-shot response deletion, and return to idle
