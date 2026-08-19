@@ -84,6 +84,15 @@ this repository. Older SHT4x PDF revisions are not co-authority.
   or NACK. The model rejects writes while a measurement or heater action is
   busy as outside model fidelity without replacing pending data, except that
   the soft reset in `SHT45-RST-ABORT-001` aborts it and begins reset timing.
+  A command write arriving while an unconsumed response is still pending — an
+  unread serial frame, or measurement or heater data that reached its frontier —
+  is likewise rejected as outside model fidelity rather than silently discarding
+  that response; no retained source decides the device's behavior for that
+  sequence, and soft reset is not declared to abort a completed response. That
+  rejection applies only to a write the model would otherwise act on: a
+  malformed length, an unsupported command, or a measurement without injected
+  ticks keeps its own error, because such a frame commits nothing and so
+  discards nothing.
 
 - `SHT45-RST-CMD-001` — Soft reset is command byte `0x94`; the device ACKs and
   returns no CRC data payload (Table 8). Evidence state: supported.

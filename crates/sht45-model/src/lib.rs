@@ -56,6 +56,13 @@ pub enum Error {
     WriteWhileBusy,
     /// A nested soft reset was attempted while reset was already busy.
     ResetWhileBusy,
+    /// A command write would have discarded an unconsumed response.
+    ///
+    /// The sources do not declare what the device does when a new command
+    /// arrives while a serial frame, or completed measurement or heater data,
+    /// is still waiting to be read. The model rejects the sequence as an
+    /// explicit limitation rather than choosing a plausible outcome.
+    WriteWithPendingResponse,
     /// A measurement was requested without explicit conversion ticks.
     MissingMeasurementTicks,
     /// A completed measurement was already consumed or is otherwise unavailable.
@@ -156,35 +163,30 @@ impl Sht45Model {
                 actual: bytes.len(),
             });
         }
-        match bytes[0] {
-            SOFT_RESET_COMMAND => {
-                self.pending = Some(PendingCommand::Reset {
-                    ready_at_ns: self.elapsed_ns.saturating_add(SOFT_RESET_NS),
-                });
-                self.measurement_consumed = false;
-                Ok(())
-            }
-            SERIAL_NUMBER_COMMAND => {
-                self.pending = Some(PendingCommand::Serial);
-                self.measurement_consumed = false;
-                Ok(())
-            }
-            MEASURE_HIGH_COMMAND | MEASURE_MEDIUM_COMMAND | MEASURE_LOW_COMMAND => {
+
+        // Resolve the write into the state it would produce before touching
+        // anything. A frame the device would not act on — a malformed length, an
+        // unsupported command, a measurement with no injected ticks — cannot
+        // discard a pending response, so its own error has to survive the
+        // pending-response guard below rather than be masked by it.
+        let next = match bytes[0] {
+            SOFT_RESET_COMMAND => PendingCommand::Reset {
+                ready_at_ns: self.elapsed_ns.saturating_add(SOFT_RESET_NS),
+            },
+            SERIAL_NUMBER_COMMAND => PendingCommand::Serial,
+            command @ (MEASURE_HIGH_COMMAND | MEASURE_MEDIUM_COMMAND | MEASURE_LOW_COMMAND) => {
                 let ticks = self
                     .measurement_ticks
                     .ok_or(Error::MissingMeasurementTicks)?;
-                let duration_ns = match bytes[0] {
+                let duration_ns = match command {
                     MEASURE_HIGH_COMMAND => HIGH_MEASUREMENT_NS,
                     MEASURE_MEDIUM_COMMAND => MEDIUM_MEASUREMENT_NS,
-                    MEASURE_LOW_COMMAND => LOW_MEASUREMENT_NS,
-                    _ => unreachable!(),
+                    _ => LOW_MEASUREMENT_NS,
                 };
-                self.pending = Some(PendingCommand::Measurement {
+                PendingCommand::Measurement {
                     ready_at_ns: self.elapsed_ns.saturating_add(duration_ns),
                     ticks,
-                });
-                self.measurement_consumed = false;
-                Ok(())
+                }
             }
             command
                 if HEATER_LONG_COMMANDS.contains(&command)
@@ -198,15 +200,28 @@ impl Sht45Model {
                 } else {
                     SHORT_HEATER_NS
                 };
-                self.pending = Some(PendingCommand::Heater {
+                PendingCommand::Heater {
                     ready_at_ns: self.elapsed_ns.saturating_add(duration_ns),
                     ticks,
-                });
-                self.measurement_consumed = false;
-                Ok(())
+                }
             }
-            command => Err(Error::UnsupportedCommand(command)),
+            command => return Err(Error::UnsupportedCommand(command)),
+        };
+
+        let response_pending = matches!(self.pending, Some(PendingCommand::Serial))
+            || matches!(
+                self.pending,
+                Some(PendingCommand::Measurement { ready_at_ns, .. }
+                    | PendingCommand::Heater { ready_at_ns, .. })
+                    if self.elapsed_ns >= ready_at_ns
+            );
+        if response_pending {
+            return Err(Error::WriteWithPendingResponse);
         }
+
+        self.pending = Some(next);
+        self.measurement_consumed = false;
+        Ok(())
     }
 
     /// Fill the modeled six-byte response, including its STOP boundary.
@@ -277,16 +292,24 @@ impl Sht45Model {
     }
 }
 
+/// Remainders of each four-bit message nibble under the `SHT45-CRC-001`
+/// polynomial, most-significant bit first.
+///
+/// Entry `i` is the remainder left by dividing `i << 4` by `0x31` over four
+/// shifts. Reducing four bits per lookup is a different derivation from the
+/// driver's bit-at-a-time shift register, which is the point: a defect in one
+/// formulation does not reproduce itself in the other, so driver-versus-model
+/// comparison can still discriminate on the CRC.
+const CRC_NIBBLE_REMAINDERS: [u8; 16] = [
+    0x00, 0x31, 0x62, 0x53, 0xc4, 0xf5, 0xa6, 0x97, 0xb9, 0x88, 0xdb, 0xea, 0x7d, 0x4c, 0x1f, 0x2e,
+];
+
 fn crc8(bytes: [u8; 2]) -> u8 {
-    let mut crc = 0xff;
+    let mut crc = 0xff_u8;
     for byte in bytes {
-        crc ^= byte;
-        for _ in 0..8 {
-            crc = if crc & 0x80 != 0 {
-                (crc << 1) ^ 0x31
-            } else {
-                crc << 1
-            };
+        for nibble in [byte >> 4, byte & 0x0f] {
+            let index = ((crc >> 4) ^ nibble) & 0x0f;
+            crc = (crc << 4) ^ CRC_NIBBLE_REMAINDERS[index as usize];
         }
     }
     crc
@@ -517,6 +540,158 @@ mod tests {
     }
 
     #[test]
+    fn rejects_a_write_that_would_discard_a_pending_serial_response() {
+        let mut model = Sht45Model::new(0x1234_5678).with_measurement_ticks(0xbeef, 0xbeef);
+        let mut response = [0; 6];
+
+        model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]).unwrap();
+        assert_eq!(
+            model.write(ADDRESS, &[MEASURE_HIGH_COMMAND]),
+            Err(Error::WriteWithPendingResponse)
+        );
+
+        // The rejected write commits nothing: the serial frame is still there.
+        model.read(ADDRESS, &mut response).unwrap();
+        assert_eq!(response, [0x12, 0x34, 0x37, 0x56, 0x78, 0x7d]);
+    }
+
+    #[test]
+    fn rejects_a_write_that_would_discard_ready_measurement_data() {
+        let mut model = Sht45Model::new(0).with_measurement_ticks(0x1234, 0x5678);
+        let mut response = [0; 6];
+
+        model.write(ADDRESS, &[MEASURE_HIGH_COMMAND]).unwrap();
+        model.advance_ns(HIGH_MEASUREMENT_NS);
+        assert_eq!(
+            model.write(ADDRESS, &[MEASURE_LOW_COMMAND]),
+            Err(Error::WriteWithPendingResponse)
+        );
+
+        model.read(ADDRESS, &mut response).unwrap();
+        assert_eq!(
+            response,
+            [
+                0x12,
+                0x34,
+                crc8([0x12, 0x34]),
+                0x56,
+                0x78,
+                crc8([0x56, 0x78]),
+            ]
+        );
+    }
+
+    #[test]
+    fn rejects_a_write_that_would_discard_ready_heater_data() {
+        let mut model = Sht45Model::new(0).with_measurement_ticks(0xbeef, 0xbeef);
+        let mut response = [0; 6];
+
+        model.write(ADDRESS, &[HEATER_SHORT_COMMANDS[0]]).unwrap();
+        model.advance_ns(SHORT_HEATER_NS);
+        assert_eq!(
+            model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]),
+            Err(Error::WriteWithPendingResponse)
+        );
+
+        model.read(ADDRESS, &mut response).unwrap();
+        assert_eq!(response, [0xbe, 0xef, 0x92, 0xbe, 0xef, 0x92]);
+    }
+
+    #[test]
+    fn soft_reset_does_not_escape_the_pending_response_boundary() {
+        // Soft reset aborts a busy action under SHT45-RST-ABORT-001. Nothing in
+        // the sources declares that it also discards an unconsumed response, so
+        // that sequence stays an explicit model limitation rather than an
+        // inferred device behavior.
+        let mut model = Sht45Model::new(0x1234_5678).with_measurement_ticks(0xbeef, 0xbeef);
+
+        model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]).unwrap();
+        assert_eq!(
+            model.write(ADDRESS, &[SOFT_RESET_COMMAND]),
+            Err(Error::WriteWithPendingResponse)
+        );
+    }
+
+    #[test]
+    fn a_completed_reset_leaves_no_response_to_discard() {
+        // Reset returns no payload, so a command after the reset interval is an
+        // ordinary idle write and must not be caught by the pending-response
+        // boundary. The public soft-reset conformance trace depends on this.
+        let mut model = Sht45Model::new(0x1234_5678);
+        let mut response = [0; 6];
+
+        model.write(ADDRESS, &[SOFT_RESET_COMMAND]).unwrap();
+        model.advance_ns(SOFT_RESET_NS);
+        model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]).unwrap();
+        model.read(ADDRESS, &mut response).unwrap();
+        assert_eq!(response, [0x12, 0x34, 0x37, 0x56, 0x78, 0x7d]);
+    }
+
+    #[test]
+    fn busy_state_precedes_the_pending_response_boundary() {
+        let mut model = Sht45Model::new(0).with_measurement_ticks(0x1234, 0x5678);
+
+        model.write(ADDRESS, &[MEASURE_HIGH_COMMAND]).unwrap();
+        model.advance_ns(HIGH_MEASUREMENT_NS - 1);
+        assert_eq!(
+            model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]),
+            Err(Error::WriteWhileBusy)
+        );
+    }
+
+    #[test]
+    fn a_frame_the_device_would_not_act_on_keeps_its_own_error() {
+        // None of these would discard the pending serial frame, so none of them
+        // may be reported as `WriteWithPendingResponse`.
+        let cases: [(&[u8], Error); 3] = [
+            (
+                &[],
+                Error::InvalidWriteLength {
+                    expected: 1,
+                    actual: 0,
+                },
+            ),
+            (
+                &[SERIAL_NUMBER_COMMAND, 0x00],
+                Error::InvalidWriteLength {
+                    expected: 1,
+                    actual: 2,
+                },
+            ),
+            (&[0x2c], Error::UnsupportedCommand(0x2c)),
+        ];
+
+        for (bytes, expected) in cases {
+            let mut model = Sht45Model::new(0x1234_5678).with_measurement_ticks(0xbeef, 0xbeef);
+            let mut response = [0; 6];
+            model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]).unwrap();
+
+            assert_eq!(model.write(ADDRESS, bytes), Err(expected));
+
+            // And the response it could not have discarded is still there.
+            model.read(ADDRESS, &mut response).unwrap();
+            assert_eq!(response, [0x12, 0x34, 0x37, 0x56, 0x78, 0x7d]);
+        }
+    }
+
+    #[test]
+    fn missing_ticks_are_reported_over_a_pending_response() {
+        // A measurement with no injected ticks is a model-input error. The model
+        // cannot act on it, so it cannot discard the pending frame either.
+        let mut model = Sht45Model::new(0x1234_5678);
+        let mut response = [0; 6];
+        model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]).unwrap();
+
+        assert_eq!(
+            model.write(ADDRESS, &[MEASURE_HIGH_COMMAND]),
+            Err(Error::MissingMeasurementTicks)
+        );
+
+        model.read(ADDRESS, &mut response).unwrap();
+        assert_eq!(response, [0x12, 0x34, 0x37, 0x56, 0x78, 0x7d]);
+    }
+
+    #[test]
     fn requires_explicit_measurement_ticks() {
         let mut model = Sht45Model::new(0);
 
@@ -545,6 +720,24 @@ mod tests {
         model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]).unwrap();
         model.read(ADDRESS, &mut response).unwrap();
         assert_eq!(response[2], 0x92);
+    }
+
+    #[test]
+    fn crc_remainder_table_matches_the_polynomial_it_claims() {
+        // The table is data, so it is worth deriving independently of itself.
+        // Entry i must be i << 4 divided by 0x31 over four most-significant-bit
+        // shifts.
+        for (index, entry) in CRC_NIBBLE_REMAINDERS.into_iter().enumerate() {
+            let mut remainder = (index as u8) << 4;
+            for _ in 0..4 {
+                remainder = if remainder & 0x80 != 0 {
+                    (remainder << 1) ^ 0x31
+                } else {
+                    remainder << 1
+                };
+            }
+            assert_eq!(remainder, entry, "table entry {index}");
+        }
     }
 
     #[test]
