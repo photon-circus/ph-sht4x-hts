@@ -19,7 +19,7 @@ Refine this list when implementation creates review-blocking invariants; do not 
 ## Sources and device propositions
 
 Retained propositions are limited to facts consumed by the implemented
-serial-number read and planned T/RH measurement work. They are supported by
+serial-number read and T/RH measurement operation. They are supported by
 Sensirion Datasheet SHT4x, D1 Version 7.3 (June 2026),
 `HT_DS_Datasheet_SHT4x_V7.3.pdf`,
 https://sensirion.com/media/documents/33FD6951/6A7C10A0/HT_DS_Datasheet_SHT4x_V7.3.pdf,
@@ -66,14 +66,14 @@ this repository. Older SHT4x PDF revisions are not co-authority.
   Typical values are not the completion bound. Evidence state: supported.
   Driver requirement: the measurement operation waits the
   Table 5 maximum through the existing `DelayNs` resource: 1600, 4500, or
-  8300 µs respectively, then perform the 6-byte read.
+  8300 µs respectively, then performs the 6-byte read.
 - `SHT45-MEAS-CONV-001` — Temperature and relative humidity convert as
   `T °C = -45 + 175 * t_ticks / 65535` and
   `RH % = -6 + 125 * rh_ticks / 65535` (section 4.6, formulae 1–2).
   Uncropped results may lie outside 0–100 %RH; the °F formula is not consumed.
   Evidence state: supported. Driver requirement: the measurement operation
   converts with integer millidegree and milli-%RH formulas,
-  without floating point, and leave results uncropped.
+  without floating point, and leaves results uncropped.
 - `SHT45-MEAS-ONCE-001` — Measurement data can be received once and is deleted
   after the first acknowledged read header (section 4.1). Evidence state:
   supported. Planned model requirement: a future measurement model will use
