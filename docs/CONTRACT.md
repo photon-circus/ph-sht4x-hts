@@ -35,10 +35,11 @@ this repository. Older SHT4x PDF revisions are not co-authority.
   unsupported here.
 - `SHT45-SN-CMD-001` — The serial number is read with command byte `0x89` as
   two 16-bit words, each followed by an 8-bit CRC; the response length
-  including CRC is 6 bytes (Table 8, section 4.7). Evidence state: supported.
+  including CRC is 6 bytes, and the command duration is 0.01 ms (Table 8,
+  section 4.7). Evidence state: supported.
   Local consequence: the driver issues `write([0x89])` followed by a separate
-  6-byte `read`, with no inserted delay; `0x89` is not the I2C read address
-  byte.
+  6-byte `read`, waiting at least 0.01 ms between them; `0x89` is not the I2C
+  read address byte.
 - `SHT45-CRC-001` — For each 16-bit read word, CRC-8 uses polynomial `0x31`,
   initialization `0xFF`, no input/output reflection, and final XOR `0x00`;
   the example is `CRC(0xBEEF) = 0x92` (Table 7, section 4.4). Evidence state:
