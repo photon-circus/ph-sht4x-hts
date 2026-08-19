@@ -55,8 +55,12 @@ manifests, lints with warnings denied, tests, compilation for the verified
 bare-metal targets, documentation, and construction and inspection of the
 driver's package archive. Every cargo invocation uses `--locked`, so the
 committed `Cargo.lock` is the resolved dependency set rather than whatever
-resolves on the day. A check that cannot run reports itself as skipped; a
-skipped check is not a passed check.
+resolves on the day.
+
+A check that cannot run says so, and distinguishes why: `skipped` when a
+prerequisite is absent, such as an uninstalled target or cargo-deny, and
+`indeterminate` when a prerequisite exists but could not be interrogated, such
+as a `rustup target list` that fails. Neither is a passed check.
 
 The gate runs over uncommitted work. When the tree is dirty — or when its state
 cannot be read, because cargo inspects the repository without the git CLI — the
