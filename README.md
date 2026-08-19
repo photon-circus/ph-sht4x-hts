@@ -34,8 +34,9 @@ each pulse's complete wait and read sequence; the caller owns application-level
 heater cadence and duty-cycle policy. See [the package README](crates/sht45/README.md).
 
 A heater pulse converts while the heater is still on, so the reading it returns
-describes the heated sensor rather than the surrounding air. It shares the
-`Measurement` type with the ambient read and is not a substitute for it.
+describes the heated sensor rather than the surrounding air. How the two differ
+is heater physics and stays unclaimed here. It shares the `Measurement` type
+with the ambient read and is not a substitute for it.
 
 ## Evidence and limitations
 

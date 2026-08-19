@@ -65,9 +65,9 @@
 - Disclosed that the measurement returned by a heater pulse is taken while the
   heater is energized and therefore describes the heated sensor rather than
   ambient conditions. It shares the `Measurement` type with the ambient read, so
-  nothing in the type system distinguishes them; the driver does not model,
-  bound, or correct the offset. Documented on the operation, in the package
-  README, and in the root README.
+  nothing in the type system distinguishes them. How far the two differ is
+  heater physics and stays unretained and unclaimed. Documented on the
+  operation, in the package README, and in the root README.
 
 ### Known issues
 

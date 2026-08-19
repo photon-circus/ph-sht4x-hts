@@ -175,9 +175,9 @@ impl<I2C, DELAY> Sht45<I2C, DELAY> {
     /// # The returned reading is not an ambient measurement
     ///
     /// Under `SHT45-HEAT-SEQ-001` the device converts *while the heater is still
-    /// on*, so the returned [`Measurement`] describes the heated sensor, not the
-    /// surrounding air: temperature reads high and relative humidity reads low by
-    /// an amount this driver does not model, bound, or correct. It shares the
+    /// on*, so the returned [`Measurement`] describes the heated sensor rather
+    /// than the surrounding air. How the two differ is heater physics, which this
+    /// repository does not retain, model, bound, or correct. It shares the
     /// [`Measurement`] type with [`Sht45::measure`] and is not a substitute for
     /// it. Use [`Sht45::measure`] for ambient temperature and humidity.
     ///

@@ -20,9 +20,9 @@ The package supports implementation-tested serial-number and one-shot T/RH reads
 ## Heater readings are not ambient readings
 
 A heater pulse converts while the heater is still on. The `Measurement` it
-returns therefore describes the heated sensor, not the surrounding air:
-temperature reads high and relative humidity reads low by an amount this driver
-does not model, bound, or correct.
+returns therefore describes the heated sensor rather than the surrounding air.
+How the two differ is heater physics, which this repository does not retain,
+model, bound, or correct.
 
 `heater_pulse` and `measure` share the `Measurement` type, so nothing in the
 type system prevents one being used where the other is meant. Use `measure` for
