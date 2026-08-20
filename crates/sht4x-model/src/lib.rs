@@ -21,16 +21,14 @@ pub const SOFT_RESET_COMMAND: u8 = 0x94;
 /// The modeled long heater command bytes, in the order `SHT45-HEAT-PWR-001`
 /// reads as descending power.
 ///
-/// That proposition is unverified, so the order is the retained reading rather
-/// than an established device fact. The model's behavior does not depend on it;
-/// it accepts all three bytes identically.
+/// The model's behavior does not depend on that order; it accepts all three
+/// bytes identically, since power is not observable at the transport boundary.
 pub const HEATER_LONG_COMMANDS: [u8; 3] = [0x39, 0x2f, 0x1e];
 /// The modeled short heater command bytes, in the order `SHT45-HEAT-PWR-001`
 /// reads as descending power.
 ///
-/// That proposition is unverified, so the order is the retained reading rather
-/// than an established device fact. The model's behavior does not depend on it;
-/// it accepts all three bytes identically.
+/// The model's behavior does not depend on that order; it accepts all three
+/// bytes identically, since power is not observable at the transport boundary.
 pub const HEATER_SHORT_COMMANDS: [u8; 3] = [0x32, 0x24, 0x15];
 const RESPONSE_LEN: usize = 6;
 

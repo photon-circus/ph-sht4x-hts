@@ -22,9 +22,9 @@ in-flight measurement or long heater pulse, routes the driver's 1 ms delay into
 model time, and verifies serial recovery; a no-op reset delay remains visibly
 busy. Heater coverage exercises all six public power/duration selections with
 independently asserted command bytes and long/short waits, injected conversion
-ticks, adapter-corrupted CRC, and a no-op-delay discriminator. The command byte
-and wait for each selection are compared; which power level a byte carries is
-`SHT45-HEAT-PWR-001`, which is unverified, so these checks do not establish that
-mapping.
+ticks, adapter-corrupted CRC, and a no-op-delay discriminator. The command byte and wait for each
+selection are compared. Which power level a byte carries is `SHT45-HEAT-PWR-001`;
+power is not observable at the transport boundary, so these checks confirm the
+selection reaches the bus, not the energy the device dissipates.
 
 The adapter is test-only and is not compiled into either production library.

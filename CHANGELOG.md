@@ -287,6 +287,18 @@
   physical SHT40, SHT41, SHT43, or SHT45, so family coverage rests on
   `SHT4X-FAMILY-SCOPE-001`'s documentary basis rather than on execution.
 
+### Changed
+
+- `SHT45-HEAT-PWR-001` moves from **unverified** to **supported**. Table 8 states
+  the mapping directly — `0x39`/`0x32` at 200 mW, `0x2F`/`0x24` at 110 mW,
+  `0x1E`/`0x15` at 20 mW — confirming the retained reading and its descending
+  order. The public `HeaterPower` documentation now names the level each variant
+  selects instead of framing it as an unconfirmed reading.
+- Recorded the qualification Table 8's caption attaches to those figures: they
+  are **typical** values stated for **VDD = 3.3 V**. No surface presents them as
+  delivered or guaranteed power. A typical value is not a bound, and what the
+  device draws at any other supply voltage is not retained here.
+
 ### Known issues
 
 - Model conformance covers every current public device operation; no operation

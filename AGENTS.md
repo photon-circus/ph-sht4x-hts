@@ -33,14 +33,13 @@ Things that are expensive to rediscover and cheap to get subtly wrong.
 - **The heater waits are composite.** `HEATER_LONG_DURATION_US` is the pulse
   plus the trailing high-repeatability measurement. Dropping the `8_300` reads
   the frame before the device has it, and no unit test would obviously say why.
-- **A power level is not a duration, and the power half is unverified.**
+- **A power level is not a duration, and the wattages are typical.**
   `SHT45-HEAT-CMD-001` groups the six heater bytes by duration;
   `SHT45-HEAT-PWR-001` binds each to a power. Both are needed to justify the
   `HeaterPower`/`HeaterDuration` mapping, and the tests cannot discriminate a
-  rotated power mapping on their own. `SHT45-HEAT-PWR-001` is recorded
-  **unverified** — its figures have not been read against the pinned datasheet —
-  so no public surface may describe a `HeaterPower` variant as a confirmed
-  wattage until a maintainer performs that read.
+  rotated power mapping on their own — power is not observable at the transport
+  boundary. The 200/110/20 mW figures are Table 8's typical values at
+  VDD = 3.3 V; no surface may present them as delivered or guaranteed power.
 - **A no-op delay provider is a discriminator, not a shortcut.** Conformance
   tests route the driver's requested delay into model time. A test that uses
   `NoopDelay` is asserting that an insufficient wait fails; using it to avoid
