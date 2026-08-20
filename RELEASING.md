@@ -41,7 +41,7 @@ create evidence. Neither authorizes a hardware-support claim.
   merely because its major version is zero.
 - Before 1.0 a breaking change increments the minor version. When compatibility
   impact is uncertain, take the larger defensible bump.
-- All three workspace manifests move together; the gate enforces it.
+- All three lifecycle-controlled manifests move together; the gate enforces it.
 
 ## Gate for an ordinary release
 
@@ -52,7 +52,9 @@ must hold. Each is a fact about the repository, not an intention:
   evidence status.
 - Implementation-focused tests and supported-target compilation proportional to
   the driver.
-- A passing `./scripts/ci.sh`.
+- Nonempty unit and model-conformance coverage reports from the required
+  `cargo-llvm-cov` tool. Their percentages are recorded, not thresholded.
+- A passing `cargo xtask ci`.
 - A changelog and this release process.
 - A verified packaged artifact, assembled by an intentional maintainer action.
 
@@ -99,19 +101,19 @@ immediately below the heading saying why it was added, which limitation it
 addresses, what value it provides, and what it costs. A list of APIs is not a
 value statement.
 
-**2. Set the version.** Update all three manifests, then `cargo update
---workspace` so `Cargo.lock` matches.
+**2. Set the version.** Update all three manifests and `expected_version` in
+`xtask/ci.ron`, then `cargo update --workspace` so `Cargo.lock` matches.
 
 **3. Unlock publication.** Replace `publish = false` with `publish =
 ["crates-io"]` in `crates/sht4x/Cargo.toml` only. The model and conformance
 packages stay unpublished.
 
-The gate asserts `publish = false` in the `[package]` table of every manifest in
-one loop, so this step must also narrow that loop to exempt the driver manifest,
-and update `expected_version` — both in the same commit. That is deliberate: the
-gate is meant to fail while the manifests and the intended distribution state
-disagree, so unlocking publication is an explicit edit to the check that guards
-it rather than something a manifest change can do quietly.
+The gate asserts `publish = false` in each lifecycle package whose
+`require_unpublished` policy is true in `xtask/ci.ron`, so this step must also
+set that field to false for the driver entry in the same commit. The model and
+conformance entries remain true. That is deliberate: the gate is meant to fail
+while the manifests and intended distribution state disagree, so unlocking
+publication requires an explicit policy edit rather than happening quietly.
 
 **4. Bring the status disclosures up to the state you just created.** This comes
 *after* the version and publication edits, not before: the root README and the
@@ -139,12 +141,14 @@ package checks fall back to the working tree when it is dirty and say so, and
 **6. Verify.**
 
 ```sh
-./scripts/ci.sh
+cargo xtask ci
 ```
 
 Record the toolchain, host, and any skipped or indeterminate check. Neither is a
-passed check. On a clean tree the package checks print no notice; a notice here
-means step 5 was not finished.
+passed check. Also retain the line, function, and region summaries reported for
+`target/coverage/unit.json` and `target/coverage/conformance.json`; they measure
+software execution only and create no physical evidence. On a clean tree the
+package checks print no notice; a notice here means step 5 was not finished.
 
 **7. Inspect the artifact.**
 

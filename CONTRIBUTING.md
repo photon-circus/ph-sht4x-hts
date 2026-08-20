@@ -86,13 +86,18 @@ meet, and it meets them in a test rather than in a library.
 Run the canonical gate:
 
 ```sh
-./scripts/ci.sh
+cargo install cargo-llvm-cov --locked # once, if it is not installed
+cargo xtask ci
 ```
 
 It is authoritative for this repository; no hosted workflow is assumed, and it
 runs over uncommitted work — when the tree is dirty, the package checks cover
 the working tree rather than the committed one and print a notice saying so.
 Only the release procedure needs a clean checkout.
+
+The gate records separate unit and model-conformance coverage summaries under
+`target/coverage`. These percentages are informational software measurements,
+not acceptance thresholds or evidence of physical-device behavior.
 
 Report skipped checks as skipped, and `indeterminate` checks as indeterminate.
 Neither is a passed check.

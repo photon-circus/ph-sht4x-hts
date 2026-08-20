@@ -1,0 +1,38 @@
+(
+    expected_version: "0.1.0-incubating.1",
+    lifecycle_packages: [
+        (
+            manifest: "crates/sht4x/Cargo.toml",
+            require_unpublished: true,
+        ),
+        (
+            manifest: "crates/sht4x-model/Cargo.toml",
+            require_unpublished: true,
+        ),
+        (
+            manifest: "crates/sht4x-conformance/Cargo.toml",
+            require_unpublished: true,
+        ),
+    ],
+    driver: (
+        package: "ph-sht4x-hts",
+        manifest: "crates/sht4x/Cargo.toml",
+    ),
+    supported_targets: [
+        "thumbv7em-none-eabihf",
+        "thumbv6m-none-eabi",
+    ],
+    coverage: (
+        unit_packages: [
+            "ph-sht4x-hts",
+            "ph-sht4x-hts-model",
+        ],
+        conformance: (
+            package: "ph-sht4x-hts-conformance",
+            test: "conformance",
+        ),
+        infrastructure_packages: ["xtask"],
+        ignored_filename_regex: "tests\\.rs$",
+        output_directory: "target/coverage",
+    ),
+)

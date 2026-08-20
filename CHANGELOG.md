@@ -91,6 +91,15 @@
 
 ### Changed
 
+- Replaced the Bash-only local gate with the cross-platform `cargo xtask ci`
+  entry point while preserving its checks, prerequisite reporting, dirty-tree
+  package behavior, and fail-fast semantics. Repository-specific lifecycle,
+  driver, and supported-target policy lives in the typed `xtask/ci.ron` file
+  rather than being compiled into the task runner. The gate also records
+  separate JSON summaries for driver/model unit coverage and for the production
+  code exercised by model conformance; percentages are informational and do not
+  widen the repository's evidence claims.
+
 - The behavioral model now derives CRC-8 by reducing four bits per table lookup
   rather than with the bit-at-a-time shift register the driver uses. The two
   implementations were previously byte-identical, so an implementation defect

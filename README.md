@@ -60,14 +60,25 @@ The independent model package is documented in [its README](crates/sht4x-model/R
 
 ## Verification
 
-Run `./scripts/ci.sh`. This local gate is authoritative; no hosted workflow is assumed.
+Install the required coverage frontend with `cargo install cargo-llvm-cov --locked`;
+the pinned toolchain supplies its `llvm-tools-preview` component.
+Run `cargo xtask ci`. This local gate is authoritative; no hosted workflow is assumed.
 
 It checks formatting, the declared version and publication lock across all three
-manifests, lints with warnings denied, tests, compilation for the verified
-bare-metal targets, documentation, and construction and inspection of the
-driver's package archive. Every cargo invocation uses `--locked`, so the
-committed `Cargo.lock` is the resolved dependency set rather than whatever
-resolves on the day.
+lifecycle-controlled manifests, lints with warnings denied, tests, host code
+coverage, compilation for the verified bare-metal targets, documentation, and
+construction and inspection of the driver's package archive. Every
+dependency-resolving cargo invocation uses `--locked`, so the committed
+`Cargo.lock` is the resolved dependency set rather than whatever resolves on
+the day.
+
+The gate writes machine-readable summaries to `target/coverage/unit.json` and
+`target/coverage/conformance.json`. The first measures driver and independent-
+model code exercised by their unit tests; the second measures those production
+implementations when the host-only conformance suite runs. A missing coverage
+tool, failed coverage test, or empty report fails the gate. Coverage percentages
+are reported but are not thresholds, and they create no device, silicon, or
+physical-evidence claim.
 
 A check that cannot run says so, and distinguishes why: `skipped` when a
 prerequisite is absent, such as an uninstalled target or cargo-deny, and
