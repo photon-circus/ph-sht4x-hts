@@ -8,8 +8,12 @@ assume — not by the internal work that established it. Device propositions, ga
 mechanics, and internal refactors belong in `docs/CONTRACT.md`, the verification
 docs, and the commit history.
 
-Versioning follows [`RELEASING.md`](RELEASING.md). The current release
-candidate is `0.1.0-incubating.1`.
+Versioning follows [`RELEASING.md`](RELEASING.md). The current published
+version is `0.1.0-incubating.1`.
+
+## Unreleased
+
+No caller-visible changes yet.
 
 ## 0.1.0-incubating.1 - 2026-08-20
 

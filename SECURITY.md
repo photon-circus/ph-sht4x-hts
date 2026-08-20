@@ -69,12 +69,10 @@ can, name the layer that owns it.
 
 ## Supported versions
 
-This package is Incubating and unpublished. The supported version is the tip of
-`main`; there are no released versions to backport to. A fix ships as an
-ordinary change under `## Unreleased` in `CHANGELOG.md`.
-
-When the package begins publishing, the most recent published version is
-supported and this section records that.
+This package is Incubating. The most recent published version,
+`0.1.0-incubating.1`, and the tip of `main` are supported. There are no older
+published versions to backport to. A fix ships as an ordinary change under
+`## Unreleased` in `CHANGELOG.md` and, when warranted, in a new prerelease.
 
 ## Response expectations
 

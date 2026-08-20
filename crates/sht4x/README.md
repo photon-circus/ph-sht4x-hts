@@ -152,7 +152,7 @@ driver.
 - Security reports: [SECURITY.md](https://github.com/photon-circus/ph-sht4x-hts/blob/main/SECURITY.md)
 - Device propositions and evidence: [repository contract](https://github.com/photon-circus/ph-sht4x-hts/blob/main/docs/CONTRACT.md)
 
-After crates.io accepts this release, API documentation will be built at
+API documentation for this release is available from
 [docs.rs](https://docs.rs/ph-sht4x-hts/0.1.0-incubating.1/ph_sht4x_hts/).
 
 ## License
