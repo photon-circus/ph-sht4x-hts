@@ -84,6 +84,11 @@
   the two independent derivations agree across the whole input domain rather
   than on the datasheet's single vector alone.
 
+
+- `Display` and `core::error::Error` for the driver's `Error`, so a caller can
+  report a failure without matching every variant by hand. `source()` exposes
+  the underlying transport error.
+
 ### Changed
 
 - The behavioral model now derives CRC-8 by reducing four bits per table lookup
@@ -115,18 +120,6 @@
   classify a crate for a registry neither package enters, and the model's
   dependency-free posture reads more clearly by omission.
 
-### Documentation
-
-- Disclosed that the measurement returned by a heater pulse is taken while the
-  heater is energized. `heater_pulse` and `measure` share the `Measurement`
-  type, so nothing in the type system records whether a result came from a
-  heater-on or heater-off conversion. How far the two differ is heater physics
-  and stays unretained and unclaimed, as does what either result implies about
-  the surrounding air — that is a system-calibration question outside this
-  repository. Documented on the operation, in the package README, and in the
-  root README.
-
-### Changed
 
 - The local gate now compiles the driver for the `thumbv7em-none-eabihf` and
   `thumbv6m-none-eabi` bare-metal targets, reporting a distinct skip when a
@@ -148,17 +141,6 @@
 - Every cargo invocation in the gate now uses `--locked`, making the committed
   `Cargo.lock` the resolved dependency set for verification.
 
-### Documentation
-
-- Recorded the verified bare-metal targets and what the local gate establishes.
-
-### Added
-
-- `Display` and `core::error::Error` for the driver's `Error`, so a caller can
-  report a failure without matching every variant by hand. `source()` exposes
-  the underlying transport error.
-
-### Changed
 
 - **Breaking:** the driver's `Error` is now `#[non_exhaustive]`, so a future
   variant is no longer a breaking change for downstream matches.
@@ -181,7 +163,31 @@
 
 ### Documentation
 
+- Disclosed that the measurement returned by a heater pulse is taken while the
+  heater is energized. `heater_pulse` and `measure` share the `Measurement`
+  type, so nothing in the type system records whether a result came from a
+  heater-on or heater-off conversion. How far the two differ is heater physics
+  and stays unretained and unclaimed, as does what either result implies about
+  the surrounding air — that is a system-calibration question outside this
+  repository. Documented on the operation, in the package README, and in the
+  root README.
+
+
+- Recorded the verified bare-metal targets and what the local gate establishes.
+
+
 - Recorded the repository's load-bearing invariants and traps in `AGENTS.md`.
+
+- Added `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, and
+  `RELEASING.md`, written to the bar a public, crates.io-published repository is
+  held to rather than to the minimum an unpublished private one currently
+  requires. Each is repository-specific: the contribution guide carries the
+  proposition rule and the evidence states that must not be collapsed, the
+  security policy scopes itself to a `no_std`, allocation-free, unsafe-free
+  driver on a board-local bus, and the release contract carries the version
+  rules, the ordinary-release gate, and the publication steps.
+- These documents change no status. The repository remains private, Incubating,
+  and unpublished, and all three manifests retain `publish = false`.
 
 ### Known issues
 
