@@ -24,9 +24,12 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install pinned gate tools
-        run: |
-          cargo install cargo-llvm-cov --version 0.8.7 --locked
-          cargo install cargo-deny --version 0.20.2 --locked
+        uses: taiki-e/install-action@a2a5f6e99e1a31540baa0468acfa302cff0f359f # v2.86.4
+        with:
+          tool: |
+            cargo-llvm-cov@0.8.7
+            cargo-deny@0.20.2
+          fallback: none
 
       - name: Run complete software gate
         run: cargo xtask ci
