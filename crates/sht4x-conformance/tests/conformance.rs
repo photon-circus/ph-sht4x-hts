@@ -59,7 +59,11 @@ impl ModelI2c {
     }
 
     fn at(address: Address, serial: u32) -> (Self, ModelDelay, SharedEvents) {
-        Self::with_model(Sht4xModel::at(address.bits(), serial))
+        Self::with_model(
+            // `Address` cannot name an undocumented value, so a failure here
+            // would be a defect in this harness, not an unsupported input.
+            Sht4xModel::at(address.bits(), serial).expect("Address is always documented"),
+        )
     }
 
     fn with_measurement_ticks(
@@ -68,7 +72,9 @@ impl ModelI2c {
         humidity: u16,
     ) -> (Self, ModelDelay, SharedEvents) {
         Self::with_model(
-            Sht4xModel::at(Address::A.bits(), serial).with_measurement_ticks(temperature, humidity),
+            Sht4xModel::at(Address::A.bits(), serial)
+                .expect("Address is always documented")
+                .with_measurement_ticks(temperature, humidity),
         )
     }
 

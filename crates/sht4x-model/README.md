@@ -1,6 +1,6 @@
 # ph-sht4x-hts-model
 
-Unpublished independent behavioral model for selected SHT45-AD1B serial-number,
+Unpublished independent behavioral model for selected SHT4x serial-number,
 one-shot T/RH, and heater-pulse operations, including soft-reset abort behavior.
 
 > [!WARNING]
@@ -10,7 +10,8 @@ one-shot T/RH, and heater-pulse operations, including soft-reset abort behavior.
 
 ## Fidelity declaration
 
-Modeled: an SHT45-AD1B at 7-bit I2C address `0x44`, with an explicitly provided
+Modeled: one SHT4x at an explicitly chosen 7-bit I2C address — `0x44`, `0x45`,
+or `0x46`, the values `SHT4X-I2C-ADDR-001` retains — with an explicitly provided
 OTP serial and explicitly injected temperature and relative-humidity conversion
 ticks. Serial accepts a separate `0x89` write followed by a six-byte read. The
 response contains two big-endian serial words and their CRC-8 bytes; the serial
@@ -23,9 +24,18 @@ of 1.1083 s or 118.3 ms, respectively, and return the same injected six-byte
 CRC frame with one-shot deletion. Malformed write lengths are reported
 separately from unsupported one-byte commands. Soft reset accepts command
 `0x94`, aborts a pending measurement or heater pulse, and keeps the device busy
-for 1 ms before returning to idle.
+for 1 ms before returning to idle. Construction rejects any address outside the
+three retained values with `UnsupportedAddress`, rather than serving modeled
+frames at an address the sources do not put a device at.
 
-Uncovered: every other SHT45 command, heater duty-cycle policy and physics,
+This is **one modeled behavior, not four devices.** `SHT4X-FAMILY-SCOPE-001`
+records that the datasheet states this behavior for the SHT4x without
+distinguishing the SHT40, SHT41, SHT43, and SHT45, and that documentary fact is
+the whole basis on which a single modeled device stands in for any of them. It
+is a statement about the document, not about the parts, and nothing here has
+been executed against a physical device of any model.
+
+Uncovered: every other SHT4x command, heater duty-cycle policy and physics,
 general-call reset, clock stretching, ambient physics, autonomous CRC
 corruption, and the device's response to writes while busy apart from
 soft-reset abort. The model does not

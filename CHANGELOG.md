@@ -265,9 +265,12 @@
   ordered. No sensor-model parameter exists, because no driver-observable
   behavior is declared to vary by accuracy grade.
 - **Breaking:** `Sht45Model` is now `Sht4xModel`, with `Sht4xModel::at` taking
-  the address the modeled device answers on. `ADDRESS` is replaced by
-  `ADDRESSES` and `DEFAULT_ADDRESS`. A model fixed at one address could not
-  discriminate a driver that ignored the address it was constructed with.
+  the address the modeled device answers on and returning
+  `Err(UnsupportedAddress)` for anything outside the three retained values.
+  `ADDRESS` is replaced by `ADDRESSES` and `DEFAULT_ADDRESS`. A model fixed at
+  one address could not discriminate a driver that ignored the address it was
+  constructed with; one that answered at any address would be inventing a device
+  the sources do not place there.
 - The supported device set is the SHT40, SHT41, SHT43, and SHT45 at any
   documented address, replacing the SHT45-AD1B alone. The former non-goal
   excluding family claims is replaced by the propositions that now carry them.

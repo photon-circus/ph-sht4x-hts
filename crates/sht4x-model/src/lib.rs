@@ -60,6 +60,12 @@ pub enum Error {
     WriteWhileBusy,
     /// A nested soft reset was attempted while reset was already busy.
     ResetWhileBusy,
+    /// Construction was attempted at an address no SHT4x is documented at.
+    ///
+    /// `SHT4X-I2C-ADDR-001` retains `0x44`, `0x45`, and `0x46`. Serving modeled
+    /// frames anywhere else would invent a device the sources do not place
+    /// there.
+    UnsupportedAddress(u8),
     /// A command write would have discarded an unconsumed response.
     ///
     /// The sources do not declare what the device does when a new command
@@ -111,14 +117,32 @@ pub struct Sht4xModel {
 impl Sht4xModel {
     /// Create a model at `DEFAULT_ADDRESS` with an explicit OTP serial number.
     pub const fn new(serial: u32) -> Self {
-        Self::at(DEFAULT_ADDRESS, serial)
+        Self::unchecked(DEFAULT_ADDRESS, serial)
     }
 
     /// Create a model answering on an explicit 7-bit address.
     ///
     /// The address is an input rather than a constant because it is a property
     /// of the part number, not of the sensor model — `SHT4X-I2C-ADDR-001`.
-    pub const fn at(address: u8, serial: u32) -> Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::UnsupportedAddress`] for anything outside [`ADDRESSES`].
+    /// The retained sources place an SHT4x at three addresses; a model that
+    /// answered elsewhere would be inventing a device rather than predicting
+    /// one, which is the value-domain leakage the behavioral-model standard
+    /// forbids.
+    pub const fn at(address: u8, serial: u32) -> Result<Self, Error> {
+        // The contiguous range is `ADDRESSES`; the sweep in
+        // `refuses_to_model_a_device_at_an_undocumented_address` fails if the
+        // two ever drift apart.
+        match address {
+            0x44..=0x46 => Ok(Self::unchecked(address, serial)),
+            other => Err(Error::UnsupportedAddress(other)),
+        }
+    }
+
+    const fn unchecked(address: u8, serial: u32) -> Self {
         Self {
             address,
             serial,
@@ -796,7 +820,7 @@ mod tests {
         // The address is a part-number property, so a model fixed at one address
         // could not discriminate a driver that ignored its own.
         for address in ADDRESSES {
-            let mut model = Sht4xModel::at(address, 0xbeef_beef);
+            let mut model = Sht4xModel::at(address, 0xbeef_beef).unwrap();
             let mut response = [0; 6];
 
             model.write(address, &[SERIAL_NUMBER_COMMAND]).unwrap();
@@ -815,6 +839,21 @@ mod tests {
                     actual: other,
                 })
             );
+        }
+    }
+
+    #[test]
+    fn refuses_to_model_a_device_at_an_undocumented_address() {
+        // `SHT4X-I2C-ADDR-001` retains three addresses. Answering anywhere else
+        // would invent a device the sources do not place there.
+        for address in [0x00, 0x43, 0x47, 0xff] {
+            assert!(matches!(
+                Sht4xModel::at(address, 0xbeef_beef),
+                Err(Error::UnsupportedAddress(reported)) if reported == address
+            ));
+        }
+        for address in ADDRESSES {
+            assert!(Sht4xModel::at(address, 0xbeef_beef).is_ok());
         }
     }
 
