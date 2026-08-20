@@ -5,13 +5,14 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 authors.workspace = true
-description = "Async no_std driver for the Sensirion SHT4x humidity and temperature sensor over abstract I2C."
+description = "Async no_std driver for Sensirion SHT4x humidity and temperature sensors over abstract I2C."
 repository.workspace = true
+documentation = "https://docs.rs/ph-sht4x-hts"
 # The README carries the lifecycle, distribution, model-conformance, and
 # physical-evidence disclosure, and crates.io and docs.rs render it. Restating
 # status in `description` would create a second copy to keep true.
 readme = "README.md"
-publish = false
+publish = ["crates-io"]
 keywords = ["sht4x", "sht45", "sensirion", "i2c", "embedded-hal-driver"]
 categories = ["embedded", "hardware-support", "no-std"]
 

@@ -1,6 +1,6 @@
 # ph-sht4x-hts
 
-Incubating unpublished async no_std Rust driver for the Sensirion SHT4x humidity and temperature sensors — SHT40, SHT41, SHT43, and SHT45 — over abstract I2C.
+Incubating async no_std Rust driver for the Sensirion SHT4x humidity and temperature sensors — SHT40, SHT41, SHT43, and SHT45 — over abstract I2C.
 
 [![Lifecycle: incubating](https://img.shields.io/badge/lifecycle-incubating-orange.svg)](https://github.com/photon-circus/.github/blob/main/docs/PERIPHERAL_DRIVER_PROFILE.md)
 [![MSRV](https://img.shields.io/badge/MSRV-1.98.0-blue.svg)](Cargo.toml)
@@ -8,7 +8,7 @@ Incubating unpublished async no_std Rust driver for the Sensirion SHT4x humidity
 
 > [!WARNING]
 > **Lifecycle:** Incubating — the responsibility is bounded and intended to become a supported driver. Compatibility follows the documented version and release policy, not lifecycle alone.
-> **Distribution:** Unpublished; the candidate version is `0.1.0-incubating.1` and the manifest sets `publish = false`.
+> **Distribution:** crates.io prerelease version `0.1.0-incubating.1`; publication is a manual maintainer action and the driver manifest allows only crates.io.
 > **Model conformance:** The unpublished host-only conformance check covers the driver's serial-number read, one-shot T/RH measurement at all three repeatabilities, all six heater pulses, soft-reset abort/recovery, and every documented address, against the independent model. That model implements behavior the datasheet states for the SHT4x without part qualification, recorded as `SHT4X-FAMILY-SCOPE-001`, plus a declared 10 ms serial guard adopted from Sensirion's current reference driver where the datasheet gives no duration; the guard is not a physical busy claim. **No check has been executed against any physical part**, so coverage across the family rests on that documentary basis rather than on execution.
 > **Physical evidence:** None. No reviewed physical-device evidence supports a physically observed or ph-hil-qualified claim.
 > Evidence and limitations apply only to named operations; publication does not imply hardware qualification.
@@ -17,7 +17,7 @@ Incubating unpublished async no_std Rust driver for the Sensirion SHT4x humidity
 
 | Package | Role | Distribution |
 | --- | --- | --- |
-| [`ph-sht4x-hts`](crates/sht4x/README.md) | Primary driver | Unpublished; `publish = false` |
+| [`ph-sht4x-hts`](crates/sht4x/README.md) | Primary driver | crates.io prerelease `0.1.0-incubating.1` |
 | [`ph-sht4x-hts-model`](crates/sht4x-model/README.md) | Host-only independent behavioral model; not a user dependency | Unpublished; `publish = false` |
 | [`ph-sht4x-hts-conformance`](crates/sht4x-conformance/README.md) | Host-only public-driver/model comparison; not a user dependency | Unpublished; `publish = false` |
 
@@ -98,8 +98,7 @@ targets. Install the pinned Cargo tools with
 `cargo install cargo-llvm-cov --version 0.8.7 --locked` and
 `cargo install cargo-deny --version 0.20.2 --locked`, then run
 `cargo xtask ci`. This complete local gate is authoritative. The bounded hosted
-`ci` workflow runs the same gate for contributor feedback only after the
-repository becomes public.
+`ci` workflow runs the same gate for contributor feedback.
 
 It checks formatting, the declared version and publication lock across all three
 lifecycle-controlled manifests, lints with warnings denied, tests in both the
@@ -139,7 +138,7 @@ notice can appear.
 - [`SECURITY.md`](SECURITY.md) — private reporting
 - [`CHANGELOG.md`](CHANGELOG.md) — caller-visible changes
 - [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) — expected behavior in project spaces
-- [`RELEASING.md`](RELEASING.md) — version rules and publication steps. Publication is a maintainer decision and never a CI side effect; this repository is currently unpublished.
+- [`RELEASING.md`](RELEASING.md) — version rules and publication steps. Publication is a maintainer decision and never a CI side effect.
 
 ## License
 
