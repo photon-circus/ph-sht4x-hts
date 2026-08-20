@@ -86,7 +86,7 @@ meet, and it meets them in a test rather than in a library.
 Run the canonical gate:
 
 ```sh
-./scripts/ci.sh
+cargo xtask ci
 ```
 
 It is authoritative for this repository; no hosted workflow is assumed, and it

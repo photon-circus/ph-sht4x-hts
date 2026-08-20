@@ -91,6 +91,10 @@
 
 ### Changed
 
+- Replaced the Bash-only local gate with the cross-platform `cargo xtask ci`
+  entry point while preserving its checks, prerequisite reporting, dirty-tree
+  package behavior, and fail-fast semantics.
+
 - The behavioral model now derives CRC-8 by reducing four bits per table lookup
   rather than with the bit-at-a-time shift register the driver uses. The two
   implementations were previously byte-identical, so an implementation defect

@@ -41,7 +41,7 @@ create evidence. Neither authorizes a hardware-support claim.
   merely because its major version is zero.
 - Before 1.0 a breaking change increments the minor version. When compatibility
   impact is uncertain, take the larger defensible bump.
-- All three workspace manifests move together; the gate enforces it.
+- All three lifecycle-controlled manifests move together; the gate enforces it.
 
 ## Gate for an ordinary release
 
@@ -52,7 +52,7 @@ must hold. Each is a fact about the repository, not an intention:
   evidence status.
 - Implementation-focused tests and supported-target compilation proportional to
   the driver.
-- A passing `./scripts/ci.sh`.
+- A passing `cargo xtask ci`.
 - A changelog and this release process.
 - A verified packaged artifact, assembled by an intentional maintainer action.
 
@@ -139,7 +139,7 @@ package checks fall back to the working tree when it is dirty and say so, and
 **6. Verify.**
 
 ```sh
-./scripts/ci.sh
+cargo xtask ci
 ```
 
 Record the toolchain, host, and any skipped or indeterminate check. Neither is a

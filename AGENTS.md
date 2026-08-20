@@ -54,4 +54,4 @@ Things that are expensive to rediscover and cheap to get subtly wrong.
 
 ## Verification and protected actions
 
-Run `./scripts/ci.sh`; report skipped checks as skipped. Do not publish, create a release, change repository visibility or lifecycle, claim model/physical evidence, or add speculative HIL/model/application scaffolding without explicit maintainer direction and the required evidence.
+Run `cargo xtask ci`; report skipped checks as skipped. Do not publish, create a release, change repository visibility or lifecycle, claim model/physical evidence, or add speculative HIL/model/application scaffolding without explicit maintainer direction and the required evidence.

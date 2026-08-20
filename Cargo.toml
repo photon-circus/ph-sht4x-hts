@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/sht4x", "crates/sht4x-model", "crates/sht4x-conformance"]
+members = ["crates/sht4x", "crates/sht4x-model", "crates/sht4x-conformance", "xtask"]
 
 [workspace.package]
 authors = ["Steven Giacomelli"]
