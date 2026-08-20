@@ -99,19 +99,19 @@ immediately below the heading saying why it was added, which limitation it
 addresses, what value it provides, and what it costs. A list of APIs is not a
 value statement.
 
-**2. Set the version.** Update all three manifests, then `cargo update
---workspace` so `Cargo.lock` matches.
+**2. Set the version.** Update all three manifests and `expected_version` in
+`xtask/ci.ron`, then `cargo update --workspace` so `Cargo.lock` matches.
 
 **3. Unlock publication.** Replace `publish = false` with `publish =
 ["crates-io"]` in `crates/sht4x/Cargo.toml` only. The model and conformance
 packages stay unpublished.
 
-The gate asserts `publish = false` in the `[package]` table of every manifest in
-one loop, so this step must also narrow that loop to exempt the driver manifest,
-and update `expected_version` — both in the same commit. That is deliberate: the
-gate is meant to fail while the manifests and the intended distribution state
-disagree, so unlocking publication is an explicit edit to the check that guards
-it rather than something a manifest change can do quietly.
+The gate asserts `publish = false` in each lifecycle package whose
+`require_unpublished` policy is true in `xtask/ci.ron`, so this step must also
+set that field to false for the driver entry in the same commit. The model and
+conformance entries remain true. That is deliberate: the gate is meant to fail
+while the manifests and intended distribution state disagree, so unlocking
+publication requires an explicit policy edit rather than happening quietly.
 
 **4. Bring the status disclosures up to the state you just created.** This comes
 *after* the version and publication edits, not before: the root README and the

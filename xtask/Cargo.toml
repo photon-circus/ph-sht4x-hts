@@ -8,3 +8,5 @@ authors.workspace = true
 publish = false
 
 [dependencies]
+ron = "0.12.2"
+serde = { version = "1.0.229", features = ["derive"] }
