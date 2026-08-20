@@ -102,7 +102,7 @@ enum PendingCommand {
     },
 }
 
-/// Independent behavioral model of selected SHT45 operations.
+/// Independent behavioral model of selected SHT4x operations.
 pub struct Sht4xModel {
     address: u8,
     serial: u32,

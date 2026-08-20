@@ -302,6 +302,30 @@
   delivered or guaranteed power. A typical value is not a bound, and what the
   device draws at any other supply voltage is not retained here.
 
+### Documentation
+
+- Restructured the three package READMEs around the retained proposition
+  identifiers. Each device fact is now cited once, by identifier, with the
+  README stating only its local consequence instead of keeping a second copy of
+  the proposition and its source coordinates. Thirteen identifiers that no
+  package surface referenced — the serial, measurement, conversion, one-shot,
+  and reset propositions among them — are now resolvable from the packaged
+  documentation. The model's fidelity declaration uses the
+  modeled/injected/abstracted/excluded/unsupported vocabulary, and the
+  conformance README states what its comparison does *not* establish.
+- Linked the contract by absolute URL from the packaged driver README. The
+  contract is not part of the packaged crate, so a relative link would not
+  resolve from a registry or from rendered documentation.
+- Cited the propositions each public driver operation consumes from its own
+  rustdoc, so the rendered API documentation resolves the same identifiers as
+  the README rather than restating the facts.
+
+### Changed
+
+- Corrected three package descriptions and four rustdoc summaries that still
+  named the SHT45 alone after the supported set widened to the SHT4x family.
+  The registry-facing description of the driver contradicted its own README.
+
 ### Known issues
 
 - Model conformance covers every current public device operation; no operation

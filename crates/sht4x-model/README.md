@@ -10,23 +10,23 @@ one-shot T/RH, and heater-pulse operations, including soft-reset abort behavior.
 
 ## Fidelity declaration
 
-Modeled: one SHT4x at an explicitly chosen 7-bit I2C address — `0x44`, `0x45`,
-or `0x46`, the values `SHT4X-I2C-ADDR-001` retains — with an explicitly provided
-OTP serial and explicitly injected temperature and relative-humidity conversion
-ticks. Serial accepts a separate `0x89` write followed by a six-byte read. The
-response contains two big-endian serial words and their CRC-8 bytes; the serial
-can be read again after another command write. Measurement accepts `0xFD`,
-`0xF6`, and `0xE0` for high, medium, and low repeatability, respectively. It
-models each command's maximum busy duration, the six-byte CRC response at or
-after that frontier, and deletion after the first successful measurement read.
-The six heater commands are accepted with long or short maximum busy frontiers
-of 1.1083 s or 118.3 ms, respectively, and return the same injected six-byte
-CRC frame with one-shot deletion. Malformed write lengths are reported
-separately from unsupported one-byte commands. Soft reset accepts command
-`0x94`, aborts a pending measurement or heater pulse, and keeps the device busy
-for 1 ms before returning to idle. Construction rejects any address outside the
-three retained values with `UnsupportedAddress`, rather than serving modeled
-frames at an address the sources do not put a device at.
+The canonical device propositions and their exact provenance live in the
+repository contract, [`docs/CONTRACT.md`](../../docs/CONTRACT.md). This
+declaration cites those identifiers and records only the model's own
+consequence. It does not restate the propositions, the vendor wording, or the
+source coordinates.
+
+### Purpose and applied-stimulus boundary
+
+The model predicts device-observable behavior at the abstract I2C transport
+boundary the driver uses. It accepts separate `write` and `read` operations,
+representing the two-STOP transaction domain; combined `write_read` or
+repeated-start behavior is unsupported.
+
+It holds no wall clock. Callers advance relative time explicitly through
+`advance_ns`, and the model remains quiescent between inputs. Environmental
+truth belongs to the caller: the OTP serial and the temperature and
+relative-humidity conversion ticks are injected, never generated.
 
 This is **one modeled behavior, not four devices.** `SHT4X-FAMILY-SCOPE-001`
 records that the datasheet states this behavior for the SHT4x without
@@ -35,30 +35,80 @@ the whole basis on which a single modeled device stands in for any of them. It
 is a statement about the document, not about the parts, and nothing here has
 been executed against a physical device of any model.
 
-Uncovered: every other SHT4x command, heater duty-cycle policy and physics,
-general-call reset, clock stretching, ambient physics, autonomous CRC
-corruption, and the device's response to writes while busy apart from
-soft-reset abort. The model does not
-represent hidden wall time; callers advance relative time explicitly, and a
-busy measurement, heater, or reset read is modeled as a device NACK. Writes
-addressed to the modeled device while a measurement, heater, or reset is busy return
-`WriteWhileBusy` as an explicit out-of-fidelity error, except that nested soft
-reset returns its distinct reset-busy limitation. A command write that would
-discard an unconsumed response — an unread serial frame, or measurement or
-heater data that has reached its frontier — returns
-`WriteWithPendingResponse` and commits nothing. No retained source decides what
-the device does for that sequence, including for soft reset, so it is an
-explicit limitation rather than a modeled behavior. A frame the device would not
-act on keeps its own error: a malformed length, an unsupported command, or a
-measurement with no injected ticks is reported as such even while a response is
-pending, because it could not have discarded anything.
+### Modeled
 
-The model exposes separate write and read operations, representing the
-two-STOP transaction domain. Combined `write_read` or repeated-start behavior
-is unsupported by this model.
+| Behavior | Proposition | Model consequence |
+| --- | --- | --- |
+| Device identity | `SHT4X-I2C-ADDR-001` | One device at a 7-bit address the caller chooses from `0x44`, `0x45`, and `0x46`, the values the proposition retains: `at` takes any of the three, and `new` uses `0x44`. A transaction addressed elsewhere returns `WrongAddress`. |
+| Serial readout | `SHT45-SN-CMD-001` | A separate `0x89` write, then a six-byte read of two big-endian words with one CRC byte each. |
+| Serial persistence | `SHT45-I2C-XFER-001` | The explicit OTP serial survives other commands and is re-readable after another command write. |
+| Word integrity | `SHT45-CRC-001` | One CRC-8 byte per 16-bit word, derived independently of the driver. |
+| Measurement commands | `SHT45-MEAS-CMD-001` | `0xFD`, `0xF6`, and `0xE0` accepted; each yields the injected six-byte CRC frame. |
+| Measurement timing | `SHT45-MEAS-TIME-001` | Each command's maximum duration is its busy frontier; a read before it returns `Busy`, at or after it succeeds. |
+| One-shot deletion | `SHT45-MEAS-ONCE-001` | The frame is deleted after the first successful read; a second read returns `MeasurementDataUnavailable`. |
+| Busy read | `SHT45-I2C-XFER-001` | A read while busy is modeled as the device NACK, distinct from a model limitation. |
+| Heater commands | `SHT45-HEAT-CMD-001`, `SHT45-MEAS-ONCE-001` | All six bytes accepted, each returning the injected six-byte CRC frame; the frame is deleted after the first successful read on the same terms as a measurement. |
+| Heater timing | `SHT45-HEAT-TIME-001` | Long and short maximum busy frontiers, each including the trailing high-repeatability measurement. |
+| Soft reset | `SHT45-RST-CMD-001`, `SHT45-RST-TIME-001`, `SHT45-RST-ABORT-001` | `0x94` accepted; the device stays busy for the whole 1 ms interval, then returns to idle with no payload. `SHT45-RST-TIME-001` gives that as a maximum; treating it as the exact frontier is a declared model abstraction. |
+| Reset abort | `SHT45-RST-ABORT-001` | Soft reset aborts a busy measurement or heater pulse and begins reset timing. |
 
-This package is a behavioral selection aid for model-only tests, not a public
-driver or a claim of model conformance by `ph-sht4x-hts`.
+### Injected
+
+The OTP serial number and the temperature and relative-humidity conversion
+ticks are supplied by the caller. A measurement or heater command issued
+without ticks returns `MissingMeasurementTicks` rather than inventing a value.
+
+### Abstracted
+
+The serial command's execution time (`SHT45-SN-CMD-001`) is not modeled as a
+busy frontier, so the serial frame is available at the first read. The driver's
+wait for it is asserted by the conformance test rather than enforced here.
+
+Heater power (`SHT45-HEAT-PWR-001`) is not modeled at all. Power is not
+observable at the transport boundary, so the model distinguishes the six
+commands only by the bytes they carry and the frontiers they set.
+
+### Excluded
+
+Every other SHT4x command, heater duty-cycle policy and physics, general-call
+reset, clock stretching, ambient physics, autonomous CRC corruption, and any
+grade-dependent behavior — `SHT4X-ACC-001` records that accuracy specifies a
+reading rather than a step in producing one, and the SHT43 calibration of
+`SHT4X-SHT43-CAL-001` is out-of-band certificate data rather than a device
+operation. Their absence implies no claim.
+
+### Unsupported
+
+These are explicit model limitations, reported distinctly from device behavior
+and never as a fabricated NACK or payload:
+
+- Construction at an address no SHT4x is documented at returns
+  `UnsupportedAddress`. `SHT4X-I2C-ADDR-001` retains three values; serving
+  modeled frames anywhere else would invent a device the sources do not place
+  there.
+- Malformed command frames: a write that is not exactly one byte returns
+  `InvalidWriteLength`, separately from `UnsupportedCommand` for an unmodeled
+  one-byte command. A read buffer that is not six bytes returns
+  `InvalidReadLength`.
+- Writes while a measurement, heater, or reset is busy return `WriteWhileBusy`;
+  nested soft reset returns the distinct `ResetWhileBusy`. Only the soft-reset
+  abort of `SHT45-RST-ABORT-001` is declared, so every other busy write stays a
+  limitation.
+- A command write that would discard an unconsumed response — an unread serial
+  frame, or measurement or heater data that has reached its frontier — returns
+  `WriteWithPendingResponse` and commits nothing. No retained source decides
+  what the device does for that sequence, including for soft reset, so it is a
+  limitation rather than a modeled behavior. A frame the model would not act on
+  keeps its own error instead: a malformed length, an unsupported command, or a
+  measurement with no injected ticks is reported as such even while a response
+  is pending, because such a write commits nothing and so discards nothing.
+
+### Nonclaims
+
+Passing tests establish compatibility only with the behavior declared above.
+This package is a behavioral selection aid for model-only tests. It is not a
+public driver, not a claim of model conformance by `ph-sht4x-hts`, and not
+evidence of silicon behavior, electrical timing, or heater physics.
 
 ## License
 

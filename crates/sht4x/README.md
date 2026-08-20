@@ -16,14 +16,55 @@ This package is not available from crates.io.
 
 ## Current state
 
-The package supports implementation-tested serial-number and one-shot T/RH reads, all six heater pulses, and soft reset for one SHT4x — an SHT40, SHT41, SHT43, or SHT45 — at 7-bit I2C address `0x44`, `0x45`, or `0x46`. The caller supplies the address, reading it off position 7 of the part number per `SHT4X-PART-NOM-001` and `SHT4X-I2C-ADDR-001`; it is not a function of the sensor model, so it is never inferred and the bus is never scanned. The serial read writes command `0x89`, waits at least 10 µs, reads six response bytes, validates both CRC-8 values, and returns the transmission-order `u32` serial number. A measurement writes `0xFD`, `0xF6`, or `0xE0` for high, medium, or low repeatability, waits the corresponding maximum duration of 8.3, 4.5, or 1.6 ms, then reads and validates six response bytes. A heater pulse selects one of the three heater commands available for the requested duration, waits the complete 1.1083 s or 118.3 ms bound, and returns the heater's on-chip high-repeatability measurement. Which command carries which power level is recorded as `SHT45-HEAT-PWR-001`: 200 mW, 110 mW, or 20 mW, descending. Those are the datasheet's typical figures at VDD = 3.3 V, not a delivered or guaranteed power, and they are qualified to that one supply voltage. Soft reset writes `0x94`, waits 1 ms, and performs no response read. Measurement results are uncropped integer millidegrees Celsius and milli-%RH.
+The package supports implementation-tested serial-number and one-shot T/RH
+reads, all six heater pulses, and soft reset for one SHT4x — an SHT40, SHT41,
+SHT43, or SHT45 — at 7-bit I2C address `0x44`, `0x45`, or `0x46`.
+
+Each device fact below is retained once, with exact provenance, as an identified
+proposition in the [repository contract](https://github.com/photon-circus/ph-sht4x-hts/blob/main/docs/CONTRACT.md).
+This README cites those identifiers and states only what the driver does with
+them; it does not keep a second copy of the propositions or of their source
+coordinates. The contract is not part of the packaged crate, so that link is
+absolute and resolves from a package registry or from rendered documentation as
+well as from the repository.
+
+| Operation | Propositions consumed | What the driver does |
+| --- | --- | --- |
+| Addressing | `SHT4X-PART-NOM-001`, `SHT4X-I2C-ADDR-001` | Takes the address from the caller as `Address::A`, `Address::B`, or `Address::C` for `0x44`, `0x45`, or `0x46`. The caller reads it off position 7 of the part number they ordered; it is not a function of the sensor model, so the driver never infers it and never scans the bus. |
+| Part coverage | `SHT4X-FAMILY-SCOPE-001`, `SHT4X-ACC-001` | Nothing branches on the sensor model. Accuracy grade is a specification of a reading rather than a step in producing one, so there is no grade-dependent processing and the driver makes no accuracy claim of its own. |
+| `read_serial_number` | `SHT45-SN-CMD-001`, `SHT45-CRC-001` | Writes the command, waits its execution time, then reads six bytes in a separate transaction and returns the transmission-order `u32`. |
+| `measure` | `SHT45-MEAS-CMD-001`, `SHT45-MEAS-TIME-001`, `SHT45-MEAS-CONV-001` | Writes the repeatability-selected command, waits that repeatability's Table 5 **maximum** rather than its typical, then reads and converts six bytes. |
+| `heater_pulse` | `SHT45-HEAT-CMD-001`, `SHT45-HEAT-PWR-001`, `SHT45-HEAT-TIME-001`, `SHT45-HEAT-SEQ-001` | Writes the power- and duration-selected command, waits the complete pulse-plus-measurement bound, then reads one six-byte frame. |
+| `reset` | `SHT45-RST-CMD-001`, `SHT45-RST-TIME-001` | Writes the soft-reset command, waits the idle-time bound, and performs no response read. |
+| Every read frame | `SHT45-CRC-001` | Validates both CRC-8 bytes. A mismatch is an error and the driver does not retry. |
+| Device not ready | `SHT45-I2C-XFER-001` | The device NACKs a read header while it is busy, so a read that arrives before the required wait has elapsed surfaces as `Error::NoAcknowledge`. The driver does not retry. |
+
+Which heater command carries which power level is `SHT45-HEAT-PWR-001`: 200 mW,
+110 mW, or 20 mW, descending. Those are the datasheet's typical figures at
+VDD = 3.3 V, not a delivered or guaranteed power, and they are qualified to that
+one supply voltage.
+
+Three consequences are worth stating plainly, because they shape how the driver
+is called.
+
+- Each operation blocks for its device-required wait, so a long heater pulse
+  holds the future for over a second (`SHT45-HEAT-TIME-001`).
+- Conversion results are uncropped integer millidegrees Celsius and milli-%RH,
+  so a reading outside 0–100 %RH is reported rather than clamped
+  (`SHT45-MEAS-CONV-001`).
+- An SHT43's three-point calibration certificate is out-of-band data retrieved
+  over a network rather than a device operation, so this driver neither
+  retrieves nor applies it (`SHT4X-SHT43-CAL-001`). It does supply the serial
+  number the certificate is filed under. Omitting the certificate introduces no
+  error the driver could otherwise have corrected: the certificate refines the
+  stated accuracy of a reading, it does not change how the reading is converted.
 
 ## Heater readings are not ambient readings
 
-A heater pulse converts while the heater is still on. The `Measurement` it
-returns therefore describes the heated sensor rather than the surrounding air.
-How the two differ is heater physics, which this repository does not retain,
-model, bound, or correct.
+A heater pulse converts while the heater is still on (`SHT45-HEAT-SEQ-001`). The
+`Measurement` it returns therefore describes the heated sensor rather than the
+surrounding air. How the two differ is heater physics, which this repository
+does not retain, model, bound, or correct.
 
 `heater_pulse` and `measure` share the `Measurement` type, so nothing in the
 type system prevents one being used where the other is meant. Use `measure` for

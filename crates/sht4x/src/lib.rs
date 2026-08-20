@@ -55,7 +55,7 @@ const MEASUREMENT_HIGH_DURATION_US: u32 = 8_300;
 const MEASUREMENT_MEDIUM_DURATION_US: u32 = 4_500;
 const MEASUREMENT_LOW_DURATION_US: u32 = 1_600;
 
-/// Errors returned by the SHT45 driver.
+/// Errors returned by the SHT4x driver.
 #[derive(Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Error<E> {
@@ -115,7 +115,7 @@ where
     }
 }
 
-/// Measurement repeatability supported by the SHT45.
+/// Measurement repeatability supported by the SHT4x.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Repeatability {
     /// High repeatability: maximum measurement duration 8.3 ms.
@@ -167,7 +167,7 @@ pub struct Measurement {
     pub rh_milli_pct: i32,
 }
 
-/// An SHT45 connected to abstract asynchronous I2C and delay resources.
+/// An SHT4x connected to abstract asynchronous I2C and delay resources.
 pub struct Sht4x<I2C, DELAY> {
     address: Address,
     i2c: I2C,
@@ -195,6 +195,15 @@ impl<I2C, DELAY> Sht4x<I2C, DELAY> {
     }
 
     /// Read the device's 32-bit transmission-order serial number.
+    ///
+    /// Per `SHT45-SN-CMD-001` this is a command write, a wait for the command's
+    /// execution time, and then a *separate* six-byte read — not a combined
+    /// `write_read`. Both response words are CRC-validated under
+    /// `SHT45-CRC-001`.
+    ///
+    /// For an SHT43 this serial is the key its ISO/IEC 17025 calibration
+    /// certificate is filed under (`SHT4X-SHT43-CAL-001`). Retrieving or
+    /// applying that certificate is outside this driver.
     pub async fn read_serial_number<E>(&mut self) -> Result<u32, Error<E>>
     where
         I2C: I2c<Error = E>,
@@ -219,6 +228,11 @@ impl<I2C, DELAY> Sht4x<I2C, DELAY> {
     }
 
     /// Perform a soft reset and wait for the device to return to idle.
+    ///
+    /// Writes the command of `SHT45-RST-CMD-001`, which returns no payload, and
+    /// then waits the `SHT45-RST-TIME-001` idle-time bound. Per
+    /// `SHT45-RST-ABORT-001` this aborts an in-flight measurement or heater
+    /// pulse.
     pub async fn reset<E>(&mut self) -> Result<(), Error<E>>
     where
         I2C: I2c<Error = E>,
@@ -235,6 +249,14 @@ impl<I2C, DELAY> Sht4x<I2C, DELAY> {
     }
 
     /// Perform one temperature and relative-humidity measurement.
+    ///
+    /// Selects the command of `SHT45-MEAS-CMD-001` for the requested
+    /// repeatability and waits that repeatability's Table 5 **maximum** from
+    /// `SHT45-MEAS-TIME-001` rather than its typical value, then reads and
+    /// converts six bytes.
+    ///
+    /// Results are uncropped under `SHT45-MEAS-CONV-001`: a relative humidity
+    /// outside 0–100 %RH is returned as computed rather than clamped.
     pub async fn measure<E>(
         &mut self,
         repeatability: Repeatability,
