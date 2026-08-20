@@ -209,6 +209,16 @@
 
 ### Added
 
+- Retained `SHT4X-PART-NOM-001` and `SHT4X-I2C-ADDR-001` from Tables 11 and 12.
+  Together they record that an SHT4x part number encodes accuracy grade at
+  position 5 and I2C address at position 7, independently: the address is
+  `0x44`, `0x45`, or `0x46` as a function of the part number, **not** of the
+  sensor model. Table 12 shows SHT40 at all three addresses and SHT43 at two, so
+  neither axis is derivable from the other.
+- `SHT4X-I2C-ADDR-001` supersedes `SHT45-I2C-ADDR-001`, which is retained and
+  still resolvable. The superseded record's local consequence described
+  `0x45`/`0x46` as SHT40 addresses; that was a narrower reading than Table 11
+  supports, and the superseding record says so.
 - Retained `SHT4X-SHT43-CAL-001`, recording the SHT43's individual ISO/IEC
   17025:2017 three-point calibration, its measurement uncertainties, and that
   its certificates are downloaded per sensor from an external service keyed by

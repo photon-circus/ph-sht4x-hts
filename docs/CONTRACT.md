@@ -50,10 +50,11 @@ is required — and none is a claim until it is performed and recorded:
 
 | Needed | Enables | Status |
 | --- | --- | --- |
-| The per-part I2C addresses across SHT40, SHT41, SHT43, and SHT45, superseding `SHT45-I2C-ADDR-001` | A variant-selected address, replacing the fixed `0x44` | Not read |
+| ~~The per-part I2C addresses~~ | — | **Read.** Answered differently than asked: the address is a function of part-number position 7, not of the sensor model. Recorded as `SHT4X-PART-NOM-001` and `SHT4X-I2C-ADDR-001`. |
+| Whether any driver-observable behavior varies by accuracy grade (part-number position 5) at all | Whether the public API needs a sensor-model concept, or only an address | Not read |
 | Whether Table 8's command bytes are stated for the SHT4x family or per part | Family siblings for the serial, measurement, reset, and heater command propositions | Not read |
 | Whether Table 5's timing bounds are stated for the family or per part | Family siblings for the measurement, reset, and heater timing propositions | Not read |
-| Whether the section 4.6 conversion formulae are stated for the family | A family sibling for `SHT45-MEAS-CONV-001`, and whether conversion is variant-dependent at all | Not read |
+| Whether the section 4.6 conversion formulae are stated for the family | A family sibling for `SHT45-MEAS-CONV-001`, and whether conversion depends on the accuracy grade at all | Not read |
 
 Missing evidence remains undefined and creates no claim. Nothing in this table
 is a validation assignment, and none of it blocks a release of the current,
@@ -70,12 +71,32 @@ retrieved 2026-08-19, 1,049,911 bytes, SHA-256
 Redistribution of the vendor PDF is not claimed; the PDF is not committed to
 this repository. Older SHT4x PDF revisions are not co-authority.
 
-- `SHT45-I2C-ADDR-001` — The SHT45-AD1B 7-bit I2C address is `0x44` (device
-  overview product table, ordering rows SHT45-AD1B-R2/R3; quick-start
-  pseudocode). Evidence state: supported.
-  Local consequence: the driver and model address one SHT45-AD1B at 7-bit
-  `0x44` only; there is no address parameter, and SHT40 `0x45`/`0x46` are
-  unsupported here.
+- `SHT4X-PART-NOM-001` — An SHT4x orderable part number encodes its properties
+  positionally (Table 11). Position 5 is the accuracy grade: `0` base, `1`
+  intermediate, `5` best, `3` ISO 17025 certified — the digit that makes a part
+  an SHT40, SHT41, SHT45, or SHT43. Position 7 is the I2C interface: `A` for
+  address `0x44`, `B` for `0x45`, `C` for `0x46`. Position 9 is `1` reserved or
+  `C` three-point calibrated and certified. Evidence state: supported.
+  Local consequence: accuracy grade and I2C address are independent positions of
+  the part number. Neither is derivable from the other, so the driver must not
+  infer an address from a sensor model or a model from an address.
+- `SHT4X-I2C-ADDR-001` — The 7-bit I2C address of an SHT4x is fixed by position
+  7 of its part number and is `0x44`, `0x45`, or `0x46` (Table 11; Table 12
+  ordering rows). It is not a function of the sensor model: Table 12 lists
+  SHT40 at `0x44`, `0x45`, and `0x46`, SHT43 at both `0x44` and `0x45`, and
+  SHT41 and SHT45 at `0x44`. Evidence state: supported. **Supersedes
+  `SHT45-I2C-ADDR-001`**, whose referent was one part rather than the family.
+  Driver requirement: the address is a caller-supplied value constrained to the
+  three documented values, not a constant and not something selected by a
+  sensor-model parameter. A caller reads it off the part number they ordered.
+- `SHT45-I2C-ADDR-001` — *(Superseded by `SHT4X-I2C-ADDR-001`; retained so
+  existing citations resolve.)* The SHT45-AD1B 7-bit I2C address is `0x44`
+  (device overview product table, ordering rows SHT45-AD1B-R2/R3; quick-start
+  pseudocode). Evidence state: supported for the SHT45-AD1B.
+  Its local consequence — that `0x45`/`0x46` are "SHT40" addresses — was a
+  narrower reading than Table 11 supports: those addresses belong to part-number
+  position 7 across the family, not to the SHT40. `SHT4X-I2C-ADDR-001` records
+  the family fact; this record remains true of the SHT45-AD1B alone.
 - `SHT45-SN-CMD-001` — The serial number is read with command byte `0x89` as
   two 16-bit words, each followed by an 8-bit CRC; the response length
   including CRC is 6 bytes, and the command duration is 0.01 ms (Table 8,
