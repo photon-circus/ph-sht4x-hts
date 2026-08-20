@@ -1,6 +1,6 @@
 # ph-sht4x-hts-conformance
 
-Unpublished host-only conformance checks for public SHT45-AD1B operations.
+Unpublished host-only conformance checks for public SHT4x operations.
 
 > [!WARNING]
 > **Lifecycle:** Incubating. This package is unpublished and sets
