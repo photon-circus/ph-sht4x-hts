@@ -1,14 +1,17 @@
 # Agent notes — ph-sht4x-hts
 
-The package name carries the SHT4x family identifier because the supported
-device set is being widened. It is not a support claim; `docs/CONTRACT.md` and
-the status disclosures state what is actually covered.
+The supported set is the SHT40, SHT41, SHT43, and SHT45. It rests on
+`SHT4X-FAMILY-SCOPE-001` — a statement about what the datasheet declares, not
+about what any part does. Nothing here has been executed against a physical
+device of any model, and the conformance suite exercises one modeled behavior
+across three addresses, not four devices. Do not let that become "the driver
+supports four sensors" in any surface that a caller reads.
 
 The adopted Photon Circus organization standards and this repository's recorded contracts are authoritative. Read `README.md` and `docs/CONTRACT.md` before changing behavior.
 
 ## Boundary and priorities
 
-Keep the repository responsible only for truthful supported SHT45 operations on one device through an abstract async I2C bus. Concrete board resources, scheduling, workflow retry, cross-device coordination, and product recovery remain integration concerns.
+Keep the repository responsible only for truthful supported SHT4x operations on one device through an abstract async I2C bus. Concrete board resources, scheduling, workflow retry, cross-device coordination, and product recovery remain integration concerns.
 
 Prioritize truthful supported behavior, explicit state/error semantics, and narrow evidence over API breadth.
 

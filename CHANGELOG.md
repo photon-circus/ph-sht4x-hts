@@ -256,6 +256,37 @@
   release block.
 - Added the SHT43 calibration-data non-goal to the contract and the root README.
 
+### Changed
+
+- **Breaking:** `Sht45` is now `Sht4x`, and `Sht4x::new` takes an `Address`
+  before the bus and delay. The `ADDRESS` constant is replaced by the `Address`
+  enum, whose variants are named for part-number position 7 — `A` for `0x44`,
+  `B` for `0x45`, `C` for `0x46` — so a caller maps straight from the part they
+  ordered. No sensor-model parameter exists, because no driver-observable
+  behavior is declared to vary by accuracy grade.
+- **Breaking:** `Sht45Model` is now `Sht4xModel`, with `Sht4xModel::at` taking
+  the address the modeled device answers on. `ADDRESS` is replaced by
+  `ADDRESSES` and `DEFAULT_ADDRESS`. A model fixed at one address could not
+  discriminate a driver that ignored the address it was constructed with.
+- The supported device set is the SHT40, SHT41, SHT43, and SHT45 at any
+  documented address, replacing the SHT45-AD1B alone. The former non-goal
+  excluding family claims is replaced by the propositions that now carry them.
+
+### Added
+
+- Driver coverage that every documented address reaches the bus, and conformance
+  coverage that the driver and model agree at each of the three — plus a check
+  that a driver built for one address and a model built for another surfaces as
+  the model's `WrongAddress` through the driver's public error path.
+
+### Documentation
+
+- Rewrote the status disclosures for the widened set, and recorded the limit
+  that matters: the conformance suite exercises one modeled behavior across
+  three addresses, not four devices. Nothing has been executed against a
+  physical SHT40, SHT41, SHT43, or SHT45, so family coverage rests on
+  `SHT4X-FAMILY-SCOPE-001`'s documentary basis rather than on execution.
+
 ### Known issues
 
 - Model conformance covers every current public device operation; no operation

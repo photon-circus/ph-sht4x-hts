@@ -2,13 +2,13 @@
 
 ## Responsibility
 
-The repository owns truthful supported SHT45 operations on one device through an abstract async I2C bus.
+The repository owns truthful supported SHT4x operations on one device through an abstract async I2C bus.
 
 ## Non-goals
 
 The repository does not own board topology; concrete bus/GPIO/power resources; sampling cadence; retry/escalation policy; heater application policy; retrieval or application of the SHT43's ISO/IEC 17025 three-point calibration data, per `SHT4X-SHT43-CAL-001`; model conformance beyond the explicitly named host-only serial-number, T/RH, heater-pulse, and soft-reset checks; or physical qualification.
 
-The supported device set is currently the SHT45-AD1B alone. Widening it to the SHT40, SHT41, SHT43, and SHT45 is recorded as decision work under "Widening to the SHT4x family"; until the corresponding propositions are retained, family support is not claimed.
+The supported device set is the SHT40, SHT41, SHT43, and SHT45 at any documented address. That set rests on `SHT4X-FAMILY-SCOPE-001`, which records what the datasheet declares rather than what any part does: no operation has been executed against a physical device of any model, and the model conformance below was run against the independent model, not against silicon.
 
 ## Initial invariants
 
@@ -288,10 +288,19 @@ validation assignment.
   while preserving the explicit OTP serial. This does not establish driver
   conformance or device behavior.
 - Model-conformant: serial-number read, T/RH measurement at high, medium, and
-  low repeatability, all six heater pulses, and soft-reset abort/recovery,
-  through the unpublished host-only conformance package's public driver/model
-  adapter check, with independently asserted command and maximum-delay
-  mappings. This covers every current public device operation.
+  low repeatability, all six heater pulses, soft-reset abort/recovery, and each
+  of the three documented I2C addresses, through the unpublished host-only
+  conformance package's public driver/model adapter check, with independently
+  asserted command, address, and maximum-delay mappings. This covers every
+  current public device operation.
+  It does not cover every supported *device*. The check runs against the
+  independent model, and the model implements one behavior — the one the
+  datasheet states for the SHT4x without part qualification, per
+  `SHT4X-FAMILY-SCOPE-001`. Nothing here was executed against an SHT40, SHT41,
+  SHT43, or SHT45. That the driver is claimed to work across the family follows
+  from what the document declares, not from having exercised more than one part,
+  and a document that does not distinguish the parts is not evidence that the
+  parts are indistinguishable.
 - Physically observed: none.
 - Qualified: none.
 

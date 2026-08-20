@@ -2,10 +2,10 @@ use embedded_hal::i2c::{ErrorType, Operation, SevenBitAddress};
 use embedded_hal_async::{delay::DelayNs, i2c::I2c};
 use futures_lite::future::block_on;
 use ph_sht4x_hts::{
-    ADDRESS, Error as DriverError, HeaterDuration, HeaterPower, Measurement, Sht45,
+    Address, Error as DriverError, HeaterDuration, HeaterPower, Measurement, Sht4x,
 };
 use ph_sht4x_hts_model::{
-    Error as ModelError, MEASURE_HIGH_COMMAND, SERIAL_NUMBER_COMMAND, Sht45Model,
+    Error as ModelError, MEASURE_HIGH_COMMAND, SERIAL_NUMBER_COMMAND, Sht4xModel,
 };
 use std::{cell::RefCell, rc::Rc, vec::Vec};
 
@@ -26,7 +26,7 @@ impl embedded_hal::i2c::Error for AdapterError {
     }
 }
 
-type SharedModel = Rc<RefCell<Sht45Model>>;
+type SharedModel = Rc<RefCell<Sht4xModel>>;
 type SharedEvents = Rc<RefCell<Vec<AdapterEvent>>>;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -55,7 +55,11 @@ struct ModelDelay {
 
 impl ModelI2c {
     fn new(serial: u32) -> (Self, ModelDelay, SharedEvents) {
-        Self::with_model(Sht45Model::new(serial))
+        Self::at(Address::A, serial)
+    }
+
+    fn at(address: Address, serial: u32) -> (Self, ModelDelay, SharedEvents) {
+        Self::with_model(Sht4xModel::at(address.bits(), serial))
     }
 
     fn with_measurement_ticks(
@@ -63,10 +67,12 @@ impl ModelI2c {
         temperature: u16,
         humidity: u16,
     ) -> (Self, ModelDelay, SharedEvents) {
-        Self::with_model(Sht45Model::new(serial).with_measurement_ticks(temperature, humidity))
+        Self::with_model(
+            Sht4xModel::at(Address::A.bits(), serial).with_measurement_ticks(temperature, humidity),
+        )
     }
 
-    fn with_model(model: Sht45Model) -> (Self, ModelDelay, SharedEvents) {
+    fn with_model(model: Sht4xModel) -> (Self, ModelDelay, SharedEvents) {
         let model = Rc::new(RefCell::new(model));
         let events = Rc::new(RefCell::new(Vec::new()));
         let i2c = Self {
@@ -147,19 +153,19 @@ impl DelayNs for NoopDelay {
 #[test]
 fn public_serial_read_conforms_to_the_model_frame() {
     let (i2c, delay, events) = ModelI2c::new(0x1234_5678);
-    let mut sensor = Sht45::new(i2c, delay);
+    let mut sensor = Sht4x::new(Address::A, i2c, delay);
 
     assert_eq!(block_on(sensor.read_serial_number()), Ok(0x1234_5678));
     assert_eq!(
         *events.borrow(),
         [
             AdapterEvent::Write {
-                address: ADDRESS,
+                address: Address::A.bits(),
                 bytes: vec![SERIAL_NUMBER_COMMAND],
             },
             AdapterEvent::DelayNs(10_000),
             AdapterEvent::Read {
-                address: ADDRESS,
+                address: Address::A.bits(),
                 length: 6,
             },
         ]
@@ -171,7 +177,7 @@ fn public_serial_read_rejects_a_corrupted_crc_on_either_word() {
     for (index, expected_word) in [(2, 0), (5, 1)] {
         let (mut i2c, delay, _events) = ModelI2c::new(0x1234_5678);
         i2c.corrupt_next_crc_at(index);
-        let mut sensor = Sht45::new(i2c, delay);
+        let mut sensor = Sht4x::new(Address::A, i2c, delay);
 
         match block_on(sensor.read_serial_number()) {
             Err(DriverError::Crc { word, .. }) => assert_eq!(word, expected_word),
@@ -194,7 +200,7 @@ fn adapter_rejects_a_transaction_the_model_domain_does_not_cover() {
     ];
 
     assert_eq!(
-        block_on(i2c.transaction(ADDRESS, &mut operations)),
+        block_on(i2c.transaction(Address::A.bits(), &mut operations)),
         Err(AdapterError::UnexpectedOperation)
     );
 }
@@ -221,6 +227,54 @@ fn adapter_distinguishes_device_behavior_from_model_limitations() {
     assert_eq!(AdapterError::UnexpectedOperation.kind(), ErrorKind::Other);
 }
 
+/// `SHT4X-I2C-ADDR-001` makes the address a part-number property rather than a
+/// constant, so the driver and the model must agree on it for each documented
+/// value. A model fixed at one address could not discriminate a driver that
+/// ignored the address it was constructed with; here each is built for the same
+/// address independently, and a mismatch surfaces as the model's `WrongAddress`
+/// through the driver's public error path.
+#[test]
+fn public_operations_conform_at_every_documented_address() {
+    for address in [Address::A, Address::B, Address::C] {
+        let (i2c, delay, events) = ModelI2c::at(address, 0x1234_5678);
+        let mut sensor = Sht4x::new(address, i2c, delay);
+
+        assert_eq!(block_on(sensor.read_serial_number()), Ok(0x1234_5678));
+        assert_eq!(
+            *events.borrow(),
+            [
+                AdapterEvent::Write {
+                    address: address.bits(),
+                    bytes: vec![SERIAL_NUMBER_COMMAND],
+                },
+                AdapterEvent::DelayNs(10_000),
+                AdapterEvent::Read {
+                    address: address.bits(),
+                    length: 6,
+                },
+            ]
+        );
+    }
+}
+
+#[test]
+fn a_driver_addressing_the_wrong_device_is_visible_through_its_public_error() {
+    // Build the model for one address and the driver for another. Nothing else
+    // differs, so this fails only if the driver's address reaches the bus.
+    let (i2c, delay, _events) = ModelI2c::at(Address::B, 0x1234_5678);
+    let mut sensor = Sht4x::new(Address::A, i2c, delay);
+
+    assert_eq!(
+        block_on(sensor.read_serial_number()),
+        Err(DriverError::I2c(AdapterError::Model(
+            ModelError::WrongAddress {
+                expected: Address::B.bits(),
+                actual: Address::A.bits(),
+            }
+        )))
+    );
+}
+
 /// The driver derives CRC-8 with a bit-at-a-time shift register; the model
 /// reduces four bits per table lookup. They are deliberately different
 /// formulations of `SHT45-CRC-001` so that a defect in one cannot hide in the
@@ -232,7 +286,7 @@ fn driver_and_model_crc_agree_across_every_word() {
     for word in 0..=u16::MAX {
         let serial = (u32::from(word) << 16) | u32::from(word);
         let (i2c, _delay, _events) = ModelI2c::new(serial);
-        let mut sensor = Sht45::new(i2c, NoopDelay);
+        let mut sensor = Sht4x::new(Address::A, i2c, NoopDelay);
 
         assert_eq!(
             block_on(sensor.read_serial_number()),
@@ -250,7 +304,7 @@ fn public_measure_conforms_at_each_repeatability_frontier() {
         (ph_sht4x_hts::Repeatability::Low, 0xe0, 1_600_000),
     ] {
         let (i2c, delay, events) = ModelI2c::with_measurement_ticks(0, 0xbeef, 0xbeef);
-        let mut sensor = Sht45::new(i2c, delay);
+        let mut sensor = Sht4x::new(Address::A, i2c, delay);
 
         assert_eq!(
             block_on(sensor.measure(repeatability)),
@@ -263,12 +317,12 @@ fn public_measure_conforms_at_each_repeatability_frontier() {
             *events.borrow(),
             [
                 AdapterEvent::Write {
-                    address: ADDRESS,
+                    address: Address::A.bits(),
                     bytes: vec![expected_command],
                 },
                 AdapterEvent::DelayNs(expected_delay_ns),
                 AdapterEvent::Read {
-                    address: ADDRESS,
+                    address: Address::A.bits(),
                     length: 6,
                 },
             ]
@@ -280,7 +334,7 @@ fn public_measure_conforms_at_each_repeatability_frontier() {
 fn public_measure_rejects_an_adapter_corrupted_model_frame() {
     let (mut i2c, delay, _events) = ModelI2c::with_measurement_ticks(0, 0xbeef, 0xbeef);
     i2c.corrupt_next_crc_at(2);
-    let mut sensor = Sht45::new(i2c, delay);
+    let mut sensor = Sht4x::new(Address::A, i2c, delay);
 
     assert!(matches!(
         block_on(sensor.measure(ph_sht4x_hts::Repeatability::High)),
@@ -291,7 +345,7 @@ fn public_measure_rejects_an_adapter_corrupted_model_frame() {
 #[test]
 fn public_measure_requires_delay_to_reach_the_model_frontier() {
     let (i2c, _delay, _events) = ModelI2c::with_measurement_ticks(0, 0xbeef, 0xbeef);
-    let mut sensor = Sht45::new(i2c, NoopDelay);
+    let mut sensor = Sht4x::new(Address::A, i2c, NoopDelay);
 
     assert!(matches!(
         block_on(sensor.measure(ph_sht4x_hts::Repeatability::High)),
@@ -320,7 +374,7 @@ fn public_heater_pulse_conforms_for_all_power_and_duration_selections() {
         (HeaterPower::Low, HeaterDuration::Short, 0x15, 118_300_000),
     ] {
         let (i2c, delay, events) = ModelI2c::with_measurement_ticks(0, 0xbeef, 0xbeef);
-        let mut sensor = Sht45::new(i2c, delay);
+        let mut sensor = Sht4x::new(Address::A, i2c, delay);
 
         assert_eq!(
             block_on(sensor.heater_pulse(power, duration)),
@@ -333,12 +387,12 @@ fn public_heater_pulse_conforms_for_all_power_and_duration_selections() {
             *events.borrow(),
             [
                 AdapterEvent::Write {
-                    address: ADDRESS,
+                    address: Address::A.bits(),
                     bytes: vec![expected_command],
                 },
                 AdapterEvent::DelayNs(expected_delay_ns),
                 AdapterEvent::Read {
-                    address: ADDRESS,
+                    address: Address::A.bits(),
                     length: 6,
                 },
             ]
@@ -350,7 +404,7 @@ fn public_heater_pulse_conforms_for_all_power_and_duration_selections() {
 fn public_heater_pulse_rejects_an_adapter_corrupted_model_frame() {
     let (mut i2c, delay, _events) = ModelI2c::with_measurement_ticks(0, 0xbeef, 0xbeef);
     i2c.corrupt_next_crc_at(2);
-    let mut sensor = Sht45::new(i2c, delay);
+    let mut sensor = Sht4x::new(Address::A, i2c, delay);
 
     assert!(matches!(
         block_on(sensor.heater_pulse(HeaterPower::High, HeaterDuration::Short)),
@@ -361,7 +415,7 @@ fn public_heater_pulse_rejects_an_adapter_corrupted_model_frame() {
 #[test]
 fn public_heater_pulse_requires_delay_to_reach_the_model_frontier() {
     let (i2c, _delay, _events) = ModelI2c::with_measurement_ticks(0, 0xbeef, 0xbeef);
-    let mut sensor = Sht45::new(i2c, NoopDelay);
+    let mut sensor = Sht4x::new(Address::A, i2c, NoopDelay);
 
     assert!(matches!(
         block_on(sensor.heater_pulse(HeaterPower::High, HeaterDuration::Long)),
@@ -373,16 +427,16 @@ fn public_heater_pulse_requires_delay_to_reach_the_model_frontier() {
 fn public_reset_aborts_an_in_flight_measurement_and_preserves_serial() {
     let (mut i2c, delay, events) = ModelI2c::with_measurement_ticks(0x1234_5678, 0xbeef, 0xbeef);
     let mut operations = [Operation::Write(&[MEASURE_HIGH_COMMAND])];
-    block_on(i2c.transaction(ADDRESS, &mut operations)).unwrap();
+    block_on(i2c.transaction(Address::A.bits(), &mut operations)).unwrap();
     events.borrow_mut().clear();
 
-    let mut sensor = Sht45::new(i2c, delay);
+    let mut sensor = Sht4x::new(Address::A, i2c, delay);
     assert_eq!(block_on(sensor.reset()), Ok(()));
     assert_eq!(
         *events.borrow(),
         [
             AdapterEvent::Write {
-                address: ADDRESS,
+                address: Address::A.bits(),
                 bytes: vec![ph_sht4x_hts_model::SOFT_RESET_COMMAND],
             },
             AdapterEvent::DelayNs(1_000_000),
@@ -394,12 +448,12 @@ fn public_reset_aborts_an_in_flight_measurement_and_preserves_serial() {
         &events.borrow()[2..],
         [
             AdapterEvent::Write {
-                address: ADDRESS,
+                address: Address::A.bits(),
                 bytes: vec![SERIAL_NUMBER_COMMAND],
             },
             AdapterEvent::DelayNs(10_000),
             AdapterEvent::Read {
-                address: ADDRESS,
+                address: Address::A.bits(),
                 length: 6,
             },
         ]
@@ -410,9 +464,9 @@ fn public_reset_aborts_an_in_flight_measurement_and_preserves_serial() {
 fn public_reset_without_delay_does_not_fake_idle_recovery() {
     let (mut i2c, _delay, _events) = ModelI2c::with_measurement_ticks(0x1234_5678, 0xbeef, 0xbeef);
     let mut operations = [Operation::Write(&[MEASURE_HIGH_COMMAND])];
-    block_on(i2c.transaction(ADDRESS, &mut operations)).unwrap();
+    block_on(i2c.transaction(Address::A.bits(), &mut operations)).unwrap();
 
-    let mut sensor = Sht45::new(i2c, NoopDelay);
+    let mut sensor = Sht4x::new(Address::A, i2c, NoopDelay);
     assert_eq!(block_on(sensor.reset()), Ok(()));
     assert_eq!(
         block_on(sensor.read_serial_number()),
@@ -426,16 +480,16 @@ fn public_reset_without_delay_does_not_fake_idle_recovery() {
 fn public_reset_aborts_an_in_flight_heater_pulse_and_preserves_serial() {
     let (mut i2c, delay, events) = ModelI2c::with_measurement_ticks(0x1234_5678, 0xbeef, 0xbeef);
     let mut operations = [Operation::Write(&[0x39])];
-    block_on(i2c.transaction(ADDRESS, &mut operations)).unwrap();
+    block_on(i2c.transaction(Address::A.bits(), &mut operations)).unwrap();
     events.borrow_mut().clear();
 
-    let mut sensor = Sht45::new(i2c, delay);
+    let mut sensor = Sht4x::new(Address::A, i2c, delay);
     assert_eq!(block_on(sensor.reset()), Ok(()));
     assert_eq!(
         *events.borrow(),
         [
             AdapterEvent::Write {
-                address: ADDRESS,
+                address: Address::A.bits(),
                 bytes: vec![ph_sht4x_hts_model::SOFT_RESET_COMMAND],
             },
             AdapterEvent::DelayNs(1_000_000),
@@ -447,12 +501,12 @@ fn public_reset_aborts_an_in_flight_heater_pulse_and_preserves_serial() {
         &events.borrow()[2..],
         [
             AdapterEvent::Write {
-                address: ADDRESS,
+                address: Address::A.bits(),
                 bytes: vec![SERIAL_NUMBER_COMMAND],
             },
             AdapterEvent::DelayNs(10_000),
             AdapterEvent::Read {
-                address: ADDRESS,
+                address: Address::A.bits(),
                 length: 6,
             },
         ]

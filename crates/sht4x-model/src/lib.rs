@@ -2,8 +2,12 @@
 #![forbid(unsafe_code)]
 #![doc = include_str!("../README.md")]
 
-/// The modeled SHT45-AD1B 7-bit I2C address.
-pub const ADDRESS: u8 = 0x44;
+/// The 7-bit I2C addresses an SHT4x can answer on, per `SHT4X-I2C-ADDR-001`.
+///
+/// Ordered as part-number position 7 `A`, `B`, `C`.
+pub const ADDRESSES: [u8; 3] = [0x44, 0x45, 0x46];
+/// The address the model uses when none is chosen.
+pub const DEFAULT_ADDRESS: u8 = ADDRESSES[0];
 /// The modeled serial-number command byte.
 pub const SERIAL_NUMBER_COMMAND: u8 = 0x89;
 /// The modeled high-repeatability measurement command byte.
@@ -95,7 +99,8 @@ enum PendingCommand {
 }
 
 /// Independent behavioral model of selected SHT45 operations.
-pub struct Sht45Model {
+pub struct Sht4xModel {
+    address: u8,
     serial: u32,
     measurement_ticks: Option<MeasurementTicks>,
     elapsed_ns: u64,
@@ -103,10 +108,19 @@ pub struct Sht45Model {
     measurement_consumed: bool,
 }
 
-impl Sht45Model {
-    /// Create a model with an explicit OTP serial number.
+impl Sht4xModel {
+    /// Create a model at `DEFAULT_ADDRESS` with an explicit OTP serial number.
     pub const fn new(serial: u32) -> Self {
+        Self::at(DEFAULT_ADDRESS, serial)
+    }
+
+    /// Create a model answering on an explicit 7-bit address.
+    ///
+    /// The address is an input rather than a constant because it is a property
+    /// of the part number, not of the sensor model — `SHT4X-I2C-ADDR-001`.
+    pub const fn at(address: u8, serial: u32) -> Self {
         Self {
+            address,
             serial,
             measurement_ticks: None,
             elapsed_ns: 0,
@@ -131,9 +145,9 @@ impl Sht45Model {
 
     /// Apply the modeled command write, including its STOP boundary.
     pub fn write(&mut self, address: u8, bytes: &[u8]) -> Result<(), Error> {
-        if address != ADDRESS {
+        if address != self.address {
             return Err(Error::WrongAddress {
-                expected: ADDRESS,
+                expected: self.address,
                 actual: address,
             });
         }
@@ -226,9 +240,9 @@ impl Sht45Model {
 
     /// Fill the modeled six-byte response, including its STOP boundary.
     pub fn read(&mut self, address: u8, response: &mut [u8]) -> Result<(), Error> {
-        if address != ADDRESS {
+        if address != self.address {
             return Err(Error::WrongAddress {
-                expected: ADDRESS,
+                expected: self.address,
                 actual: address,
             });
         }
@@ -312,23 +326,27 @@ mod tests {
 
     #[test]
     fn models_the_required_serial_trace() {
-        let mut model = Sht45Model::new(0xbeef_beef);
+        let mut model = Sht4xModel::new(0xbeef_beef);
         let mut response = [0; 6];
-        model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]).unwrap();
-        model.read(ADDRESS, &mut response).unwrap();
+        model
+            .write(DEFAULT_ADDRESS, &[SERIAL_NUMBER_COMMAND])
+            .unwrap();
+        model.read(DEFAULT_ADDRESS, &mut response).unwrap();
         assert_eq!(response, [0xbe, 0xef, 0x92, 0xbe, 0xef, 0x92]);
     }
 
     #[test]
     fn models_high_measurement_busy_frontier_and_frame() {
-        let mut model = Sht45Model::new(0).with_measurement_ticks(0xbeef, 0xbeef);
+        let mut model = Sht4xModel::new(0).with_measurement_ticks(0xbeef, 0xbeef);
         let mut response = [0; 6];
 
-        model.write(ADDRESS, &[MEASURE_HIGH_COMMAND]).unwrap();
+        model
+            .write(DEFAULT_ADDRESS, &[MEASURE_HIGH_COMMAND])
+            .unwrap();
         model.advance_ns(8_299_999);
-        assert_eq!(model.read(ADDRESS, &mut response), Err(Error::Busy));
+        assert_eq!(model.read(DEFAULT_ADDRESS, &mut response), Err(Error::Busy));
         model.advance_ns(1);
-        model.read(ADDRESS, &mut response).unwrap();
+        model.read(DEFAULT_ADDRESS, &mut response).unwrap();
 
         assert_eq!(response, [0xbe, 0xef, 0x92, 0xbe, 0xef, 0x92]);
     }
@@ -339,14 +357,14 @@ mod tests {
             (MEASURE_MEDIUM_COMMAND, 4_500_000),
             (MEASURE_LOW_COMMAND, 1_600_000),
         ] {
-            let mut model = Sht45Model::new(0).with_measurement_ticks(0x1234, 0x5678);
+            let mut model = Sht4xModel::new(0).with_measurement_ticks(0x1234, 0x5678);
             let mut response = [0; 6];
 
-            model.write(ADDRESS, &[command]).unwrap();
+            model.write(DEFAULT_ADDRESS, &[command]).unwrap();
             model.advance_ns(duration_ns - 1);
-            assert_eq!(model.read(ADDRESS, &mut response), Err(Error::Busy));
+            assert_eq!(model.read(DEFAULT_ADDRESS, &mut response), Err(Error::Busy));
             model.advance_ns(1);
-            model.read(ADDRESS, &mut response).unwrap();
+            model.read(DEFAULT_ADDRESS, &mut response).unwrap();
         }
     }
 
@@ -361,17 +379,17 @@ mod tests {
                     .map(|command| (command, SHORT_HEATER_NS)),
             )
         {
-            let mut model = Sht45Model::new(0).with_measurement_ticks(0xbeef, 0xbeef);
+            let mut model = Sht4xModel::new(0).with_measurement_ticks(0xbeef, 0xbeef);
             let mut response = [0; 6];
 
-            model.write(ADDRESS, &[command]).unwrap();
+            model.write(DEFAULT_ADDRESS, &[command]).unwrap();
             model.advance_ns(duration_ns - 1);
-            assert_eq!(model.read(ADDRESS, &mut response), Err(Error::Busy));
+            assert_eq!(model.read(DEFAULT_ADDRESS, &mut response), Err(Error::Busy));
             model.advance_ns(1);
-            model.read(ADDRESS, &mut response).unwrap();
+            model.read(DEFAULT_ADDRESS, &mut response).unwrap();
             assert_eq!(response, [0xbe, 0xef, 0x92, 0xbe, 0xef, 0x92]);
             assert_eq!(
-                model.read(ADDRESS, &mut response),
+                model.read(DEFAULT_ADDRESS, &mut response),
                 Err(Error::MeasurementDataUnavailable)
             );
         }
@@ -379,37 +397,41 @@ mod tests {
 
     #[test]
     fn retains_split_delay_progress_and_consumes_measurement_once() {
-        let mut model = Sht45Model::new(0).with_measurement_ticks(0xbeef, 0xbeef);
+        let mut model = Sht4xModel::new(0).with_measurement_ticks(0xbeef, 0xbeef);
         let mut response = [0; 6];
 
-        model.write(ADDRESS, &[MEASURE_HIGH_COMMAND]).unwrap();
+        model
+            .write(DEFAULT_ADDRESS, &[MEASURE_HIGH_COMMAND])
+            .unwrap();
         model.advance_ns(4_000_000);
         model.advance_ns(4_300_000);
-        model.read(ADDRESS, &mut response).unwrap();
+        model.read(DEFAULT_ADDRESS, &mut response).unwrap();
         assert_eq!(
-            model.read(ADDRESS, &mut response),
+            model.read(DEFAULT_ADDRESS, &mut response),
             Err(Error::MeasurementDataUnavailable)
         );
     }
 
     #[test]
     fn rejects_writes_while_busy_without_replacing_the_measurement() {
-        let mut model = Sht45Model::new(0).with_measurement_ticks(0x1234, 0x5678);
+        let mut model = Sht4xModel::new(0).with_measurement_ticks(0x1234, 0x5678);
         let mut response = [0; 6];
 
-        model.write(ADDRESS, &[MEASURE_HIGH_COMMAND]).unwrap();
+        model
+            .write(DEFAULT_ADDRESS, &[MEASURE_HIGH_COMMAND])
+            .unwrap();
         model.advance_ns(4_000_000);
         assert_eq!(
-            model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]),
+            model.write(DEFAULT_ADDRESS, &[SERIAL_NUMBER_COMMAND]),
             Err(Error::WriteWhileBusy)
         );
         assert_eq!(
-            model.write(ADDRESS, &[MEASURE_LOW_COMMAND]),
+            model.write(DEFAULT_ADDRESS, &[MEASURE_LOW_COMMAND]),
             Err(Error::WriteWhileBusy)
         );
 
         model.advance_ns(4_300_000);
-        model.read(ADDRESS, &mut response).unwrap();
+        model.read(DEFAULT_ADDRESS, &mut response).unwrap();
         assert_eq!(
             response,
             [
@@ -425,139 +447,160 @@ mod tests {
 
     #[test]
     fn aborts_measurement_with_soft_reset_and_returns_to_idle() {
-        let mut model = Sht45Model::new(0x1234_5678).with_measurement_ticks(0xbeef, 0xbeef);
+        let mut model = Sht4xModel::new(0x1234_5678).with_measurement_ticks(0xbeef, 0xbeef);
         let mut response = [0; 6];
 
-        model.write(ADDRESS, &[MEASURE_HIGH_COMMAND]).unwrap();
+        model
+            .write(DEFAULT_ADDRESS, &[MEASURE_HIGH_COMMAND])
+            .unwrap();
         model.advance_ns(1_000_000);
-        model.write(ADDRESS, &[SOFT_RESET_COMMAND]).unwrap();
+        model.write(DEFAULT_ADDRESS, &[SOFT_RESET_COMMAND]).unwrap();
         model.advance_ns(SOFT_RESET_NS - 1);
-        assert_eq!(model.read(ADDRESS, &mut response), Err(Error::Busy));
+        assert_eq!(model.read(DEFAULT_ADDRESS, &mut response), Err(Error::Busy));
         model.advance_ns(1);
         assert_eq!(
-            model.read(ADDRESS, &mut response),
+            model.read(DEFAULT_ADDRESS, &mut response),
             Err(Error::ReadBeforeCommand)
         );
 
-        model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]).unwrap();
-        model.read(ADDRESS, &mut response).unwrap();
+        model
+            .write(DEFAULT_ADDRESS, &[SERIAL_NUMBER_COMMAND])
+            .unwrap();
+        model.read(DEFAULT_ADDRESS, &mut response).unwrap();
         assert_eq!(response, [0x12, 0x34, 0x37, 0x56, 0x78, 0x7d]);
     }
 
     #[test]
     fn aborts_heater_with_soft_reset_and_preserves_serial() {
-        let mut model = Sht45Model::new(0x1234_5678).with_measurement_ticks(0xbeef, 0xbeef);
+        let mut model = Sht4xModel::new(0x1234_5678).with_measurement_ticks(0xbeef, 0xbeef);
         let mut response = [0; 6];
 
-        model.write(ADDRESS, &[HEATER_LONG_COMMANDS[0]]).unwrap();
+        model
+            .write(DEFAULT_ADDRESS, &[HEATER_LONG_COMMANDS[0]])
+            .unwrap();
         model.advance_ns(1_000_000);
-        assert_eq!(model.write(ADDRESS, &[SOFT_RESET_COMMAND]), Ok(()));
+        assert_eq!(model.write(DEFAULT_ADDRESS, &[SOFT_RESET_COMMAND]), Ok(()));
         model.advance_ns(SOFT_RESET_NS - 1);
-        assert_eq!(model.read(ADDRESS, &mut response), Err(Error::Busy));
+        assert_eq!(model.read(DEFAULT_ADDRESS, &mut response), Err(Error::Busy));
         model.advance_ns(1);
         assert_eq!(
-            model.read(ADDRESS, &mut response),
+            model.read(DEFAULT_ADDRESS, &mut response),
             Err(Error::ReadBeforeCommand)
         );
 
-        model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]).unwrap();
-        model.read(ADDRESS, &mut response).unwrap();
+        model
+            .write(DEFAULT_ADDRESS, &[SERIAL_NUMBER_COMMAND])
+            .unwrap();
+        model.read(DEFAULT_ADDRESS, &mut response).unwrap();
         assert_eq!(response, [0x12, 0x34, 0x37, 0x56, 0x78, 0x7d]);
     }
 
     #[test]
     fn soft_reset_is_the_only_busy_write_exception() {
-        let mut model = Sht45Model::new(0).with_measurement_ticks(0x1234, 0x5678);
+        let mut model = Sht4xModel::new(0).with_measurement_ticks(0x1234, 0x5678);
 
-        model.write(ADDRESS, &[MEASURE_HIGH_COMMAND]).unwrap();
+        model
+            .write(DEFAULT_ADDRESS, &[MEASURE_HIGH_COMMAND])
+            .unwrap();
         model.advance_ns(1_000_000);
-        assert_eq!(model.write(ADDRESS, &[SOFT_RESET_COMMAND]), Ok(()));
+        assert_eq!(model.write(DEFAULT_ADDRESS, &[SOFT_RESET_COMMAND]), Ok(()));
         assert_eq!(
-            model.write(ADDRESS, &[SOFT_RESET_COMMAND]),
+            model.write(DEFAULT_ADDRESS, &[SOFT_RESET_COMMAND]),
             Err(Error::ResetWhileBusy)
         );
         assert_eq!(
-            model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]),
+            model.write(DEFAULT_ADDRESS, &[SERIAL_NUMBER_COMMAND]),
             Err(Error::WriteWhileBusy)
         );
     }
 
     #[test]
     fn rejects_non_reset_writes_while_heater_is_busy() {
-        let mut model = Sht45Model::new(0).with_measurement_ticks(0x1234, 0x5678);
+        let mut model = Sht4xModel::new(0).with_measurement_ticks(0x1234, 0x5678);
 
-        model.write(ADDRESS, &[HEATER_SHORT_COMMANDS[0]]).unwrap();
+        model
+            .write(DEFAULT_ADDRESS, &[HEATER_SHORT_COMMANDS[0]])
+            .unwrap();
         assert_eq!(
-            model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]),
+            model.write(DEFAULT_ADDRESS, &[SERIAL_NUMBER_COMMAND]),
             Err(Error::WriteWhileBusy)
         );
         assert_eq!(
-            model.write(ADDRESS, &[MEASURE_HIGH_COMMAND]),
+            model.write(DEFAULT_ADDRESS, &[MEASURE_HIGH_COMMAND]),
             Err(Error::WriteWhileBusy)
         );
-        assert_eq!(model.write(ADDRESS, &[SOFT_RESET_COMMAND]), Ok(()));
+        assert_eq!(model.write(DEFAULT_ADDRESS, &[SOFT_RESET_COMMAND]), Ok(()));
     }
 
     #[test]
     fn busy_state_precedes_malformed_write_validation() {
         for pending_command in [MEASURE_HIGH_COMMAND, SOFT_RESET_COMMAND] {
-            let mut model = Sht45Model::new(0).with_measurement_ticks(0x1234, 0x5678);
-            model.write(ADDRESS, &[pending_command]).unwrap();
+            let mut model = Sht4xModel::new(0).with_measurement_ticks(0x1234, 0x5678);
+            model.write(DEFAULT_ADDRESS, &[pending_command]).unwrap();
 
             for bytes in [&[][..], &[SERIAL_NUMBER_COMMAND, 0x00][..]] {
-                assert_eq!(model.write(ADDRESS, bytes), Err(Error::WriteWhileBusy));
+                assert_eq!(
+                    model.write(DEFAULT_ADDRESS, bytes),
+                    Err(Error::WriteWhileBusy)
+                );
             }
         }
     }
 
     #[test]
     fn reset_accumulates_split_delay_and_works_when_idle() {
-        let mut model = Sht45Model::new(0x1234_5678);
+        let mut model = Sht4xModel::new(0x1234_5678);
         let mut response = [0; 6];
 
-        model.write(ADDRESS, &[SOFT_RESET_COMMAND]).unwrap();
+        model.write(DEFAULT_ADDRESS, &[SOFT_RESET_COMMAND]).unwrap();
         model.advance_ns(400_000);
-        assert_eq!(model.read(ADDRESS, &mut response), Err(Error::Busy));
+        assert_eq!(model.read(DEFAULT_ADDRESS, &mut response), Err(Error::Busy));
         model.advance_ns(600_000);
         assert_eq!(
-            model.read(ADDRESS, &mut response),
+            model.read(DEFAULT_ADDRESS, &mut response),
             Err(Error::ReadBeforeCommand)
         );
 
-        model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]).unwrap();
-        model.read(ADDRESS, &mut response).unwrap();
+        model
+            .write(DEFAULT_ADDRESS, &[SERIAL_NUMBER_COMMAND])
+            .unwrap();
+        model.read(DEFAULT_ADDRESS, &mut response).unwrap();
         assert_eq!(response, [0x12, 0x34, 0x37, 0x56, 0x78, 0x7d]);
     }
 
     #[test]
     fn rejects_a_write_that_would_discard_a_pending_serial_response() {
-        let mut model = Sht45Model::new(0x1234_5678).with_measurement_ticks(0xbeef, 0xbeef);
+        let mut model = Sht4xModel::new(0x1234_5678).with_measurement_ticks(0xbeef, 0xbeef);
         let mut response = [0; 6];
 
-        model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]).unwrap();
+        model
+            .write(DEFAULT_ADDRESS, &[SERIAL_NUMBER_COMMAND])
+            .unwrap();
         assert_eq!(
-            model.write(ADDRESS, &[MEASURE_HIGH_COMMAND]),
+            model.write(DEFAULT_ADDRESS, &[MEASURE_HIGH_COMMAND]),
             Err(Error::WriteWithPendingResponse)
         );
 
         // The rejected write commits nothing: the serial frame is still there.
-        model.read(ADDRESS, &mut response).unwrap();
+        model.read(DEFAULT_ADDRESS, &mut response).unwrap();
         assert_eq!(response, [0x12, 0x34, 0x37, 0x56, 0x78, 0x7d]);
     }
 
     #[test]
     fn rejects_a_write_that_would_discard_ready_measurement_data() {
-        let mut model = Sht45Model::new(0).with_measurement_ticks(0x1234, 0x5678);
+        let mut model = Sht4xModel::new(0).with_measurement_ticks(0x1234, 0x5678);
         let mut response = [0; 6];
 
-        model.write(ADDRESS, &[MEASURE_HIGH_COMMAND]).unwrap();
+        model
+            .write(DEFAULT_ADDRESS, &[MEASURE_HIGH_COMMAND])
+            .unwrap();
         model.advance_ns(HIGH_MEASUREMENT_NS);
         assert_eq!(
-            model.write(ADDRESS, &[MEASURE_LOW_COMMAND]),
+            model.write(DEFAULT_ADDRESS, &[MEASURE_LOW_COMMAND]),
             Err(Error::WriteWithPendingResponse)
         );
 
-        model.read(ADDRESS, &mut response).unwrap();
+        model.read(DEFAULT_ADDRESS, &mut response).unwrap();
         assert_eq!(
             response,
             [
@@ -573,17 +616,19 @@ mod tests {
 
     #[test]
     fn rejects_a_write_that_would_discard_ready_heater_data() {
-        let mut model = Sht45Model::new(0).with_measurement_ticks(0xbeef, 0xbeef);
+        let mut model = Sht4xModel::new(0).with_measurement_ticks(0xbeef, 0xbeef);
         let mut response = [0; 6];
 
-        model.write(ADDRESS, &[HEATER_SHORT_COMMANDS[0]]).unwrap();
+        model
+            .write(DEFAULT_ADDRESS, &[HEATER_SHORT_COMMANDS[0]])
+            .unwrap();
         model.advance_ns(SHORT_HEATER_NS);
         assert_eq!(
-            model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]),
+            model.write(DEFAULT_ADDRESS, &[SERIAL_NUMBER_COMMAND]),
             Err(Error::WriteWithPendingResponse)
         );
 
-        model.read(ADDRESS, &mut response).unwrap();
+        model.read(DEFAULT_ADDRESS, &mut response).unwrap();
         assert_eq!(response, [0xbe, 0xef, 0x92, 0xbe, 0xef, 0x92]);
     }
 
@@ -593,11 +638,13 @@ mod tests {
         // the sources declares that it also discards an unconsumed response, so
         // that sequence stays an explicit model limitation rather than an
         // inferred device behavior.
-        let mut model = Sht45Model::new(0x1234_5678).with_measurement_ticks(0xbeef, 0xbeef);
+        let mut model = Sht4xModel::new(0x1234_5678).with_measurement_ticks(0xbeef, 0xbeef);
 
-        model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]).unwrap();
+        model
+            .write(DEFAULT_ADDRESS, &[SERIAL_NUMBER_COMMAND])
+            .unwrap();
         assert_eq!(
-            model.write(ADDRESS, &[SOFT_RESET_COMMAND]),
+            model.write(DEFAULT_ADDRESS, &[SOFT_RESET_COMMAND]),
             Err(Error::WriteWithPendingResponse)
         );
     }
@@ -607,24 +654,28 @@ mod tests {
         // Reset returns no payload, so a command after the reset interval is an
         // ordinary idle write and must not be caught by the pending-response
         // boundary. The public soft-reset conformance trace depends on this.
-        let mut model = Sht45Model::new(0x1234_5678);
+        let mut model = Sht4xModel::new(0x1234_5678);
         let mut response = [0; 6];
 
-        model.write(ADDRESS, &[SOFT_RESET_COMMAND]).unwrap();
+        model.write(DEFAULT_ADDRESS, &[SOFT_RESET_COMMAND]).unwrap();
         model.advance_ns(SOFT_RESET_NS);
-        model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]).unwrap();
-        model.read(ADDRESS, &mut response).unwrap();
+        model
+            .write(DEFAULT_ADDRESS, &[SERIAL_NUMBER_COMMAND])
+            .unwrap();
+        model.read(DEFAULT_ADDRESS, &mut response).unwrap();
         assert_eq!(response, [0x12, 0x34, 0x37, 0x56, 0x78, 0x7d]);
     }
 
     #[test]
     fn busy_state_precedes_the_pending_response_boundary() {
-        let mut model = Sht45Model::new(0).with_measurement_ticks(0x1234, 0x5678);
+        let mut model = Sht4xModel::new(0).with_measurement_ticks(0x1234, 0x5678);
 
-        model.write(ADDRESS, &[MEASURE_HIGH_COMMAND]).unwrap();
+        model
+            .write(DEFAULT_ADDRESS, &[MEASURE_HIGH_COMMAND])
+            .unwrap();
         model.advance_ns(HIGH_MEASUREMENT_NS - 1);
         assert_eq!(
-            model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]),
+            model.write(DEFAULT_ADDRESS, &[SERIAL_NUMBER_COMMAND]),
             Err(Error::WriteWhileBusy)
         );
     }
@@ -652,14 +703,16 @@ mod tests {
         ];
 
         for (bytes, expected) in cases {
-            let mut model = Sht45Model::new(0x1234_5678).with_measurement_ticks(0xbeef, 0xbeef);
+            let mut model = Sht4xModel::new(0x1234_5678).with_measurement_ticks(0xbeef, 0xbeef);
             let mut response = [0; 6];
-            model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]).unwrap();
+            model
+                .write(DEFAULT_ADDRESS, &[SERIAL_NUMBER_COMMAND])
+                .unwrap();
 
-            assert_eq!(model.write(ADDRESS, bytes), Err(expected));
+            assert_eq!(model.write(DEFAULT_ADDRESS, bytes), Err(expected));
 
             // And the response it could not have discarded is still there.
-            model.read(ADDRESS, &mut response).unwrap();
+            model.read(DEFAULT_ADDRESS, &mut response).unwrap();
             assert_eq!(response, [0x12, 0x34, 0x37, 0x56, 0x78, 0x7d]);
         }
     }
@@ -668,47 +721,55 @@ mod tests {
     fn missing_ticks_are_reported_over_a_pending_response() {
         // A measurement with no injected ticks is a model-input error. The model
         // cannot act on it, so it cannot discard the pending frame either.
-        let mut model = Sht45Model::new(0x1234_5678);
+        let mut model = Sht4xModel::new(0x1234_5678);
         let mut response = [0; 6];
-        model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]).unwrap();
+        model
+            .write(DEFAULT_ADDRESS, &[SERIAL_NUMBER_COMMAND])
+            .unwrap();
 
         assert_eq!(
-            model.write(ADDRESS, &[MEASURE_HIGH_COMMAND]),
+            model.write(DEFAULT_ADDRESS, &[MEASURE_HIGH_COMMAND]),
             Err(Error::MissingMeasurementTicks)
         );
 
-        model.read(ADDRESS, &mut response).unwrap();
+        model.read(DEFAULT_ADDRESS, &mut response).unwrap();
         assert_eq!(response, [0x12, 0x34, 0x37, 0x56, 0x78, 0x7d]);
     }
 
     #[test]
     fn requires_explicit_measurement_ticks() {
-        let mut model = Sht45Model::new(0);
+        let mut model = Sht4xModel::new(0);
 
         assert_eq!(
-            model.write(ADDRESS, &[MEASURE_HIGH_COMMAND]),
+            model.write(DEFAULT_ADDRESS, &[MEASURE_HIGH_COMMAND]),
             Err(Error::MissingMeasurementTicks)
         );
     }
 
     #[test]
     fn serial_read_is_stable_after_another_command() {
-        let mut model = Sht45Model::new(0x1234_5678);
+        let mut model = Sht4xModel::new(0x1234_5678);
         let mut first = [0; 6];
         let mut second = [0; 6];
-        model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]).unwrap();
-        model.read(ADDRESS, &mut first).unwrap();
-        model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]).unwrap();
-        model.read(ADDRESS, &mut second).unwrap();
+        model
+            .write(DEFAULT_ADDRESS, &[SERIAL_NUMBER_COMMAND])
+            .unwrap();
+        model.read(DEFAULT_ADDRESS, &mut first).unwrap();
+        model
+            .write(DEFAULT_ADDRESS, &[SERIAL_NUMBER_COMMAND])
+            .unwrap();
+        model.read(DEFAULT_ADDRESS, &mut second).unwrap();
         assert_eq!(first, second);
     }
 
     #[test]
     fn owns_the_crc_vector() {
-        let mut model = Sht45Model::new(0xbeef_beef);
+        let mut model = Sht4xModel::new(0xbeef_beef);
         let mut response = [0; 6];
-        model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]).unwrap();
-        model.read(ADDRESS, &mut response).unwrap();
+        model
+            .write(DEFAULT_ADDRESS, &[SERIAL_NUMBER_COMMAND])
+            .unwrap();
+        model.read(DEFAULT_ADDRESS, &mut response).unwrap();
         assert_eq!(response[2], 0x92);
     }
 
@@ -731,43 +792,72 @@ mod tests {
     }
 
     #[test]
+    fn answers_on_whichever_documented_address_it_was_given() {
+        // The address is a part-number property, so a model fixed at one address
+        // could not discriminate a driver that ignored its own.
+        for address in ADDRESSES {
+            let mut model = Sht4xModel::at(address, 0xbeef_beef);
+            let mut response = [0; 6];
+
+            model.write(address, &[SERIAL_NUMBER_COMMAND]).unwrap();
+            model.read(address, &mut response).unwrap();
+            assert_eq!(response, [0xbe, 0xef, 0x92, 0xbe, 0xef, 0x92]);
+
+            let other = if address == ADDRESSES[0] {
+                ADDRESSES[1]
+            } else {
+                ADDRESSES[0]
+            };
+            assert_eq!(
+                model.write(other, &[SERIAL_NUMBER_COMMAND]),
+                Err(Error::WrongAddress {
+                    expected: address,
+                    actual: other,
+                })
+            );
+        }
+    }
+
+    #[test]
     fn rejects_non_modeled_transactions() {
-        let mut model = Sht45Model::new(0xbeef_beef);
+        let mut model = Sht4xModel::new(0xbeef_beef);
         let mut response = [0; 6];
         assert_eq!(
             model.write(0x45, &[SERIAL_NUMBER_COMMAND]),
             Err(Error::WrongAddress {
-                expected: ADDRESS,
+                expected: DEFAULT_ADDRESS,
                 actual: 0x45
             })
         );
         assert_eq!(
-            model.write(ADDRESS, &[0x2c]),
+            model.write(DEFAULT_ADDRESS, &[0x2c]),
             Err(Error::UnsupportedCommand(0x2c))
         );
         assert_eq!(
-            model.read(ADDRESS, &mut response),
+            model.read(DEFAULT_ADDRESS, &mut response),
             Err(Error::ReadBeforeCommand)
         );
-        model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND]).unwrap();
+        model
+            .write(DEFAULT_ADDRESS, &[SERIAL_NUMBER_COMMAND])
+            .unwrap();
         assert_eq!(
-            model.read(ADDRESS, &mut [0; 5]),
+            model.read(DEFAULT_ADDRESS, &mut [0; 5]),
             Err(Error::InvalidReadLength(5))
         );
     }
 
     #[test]
     fn reports_malformed_command_frames_distinctly() {
-        let mut model = Sht45Model::new(0xbeef_beef);
+        let mut model = Sht4xModel::new(0xbeef_beef);
         assert_eq!(
-            model.write(ADDRESS, &[]),
+            model.write(DEFAULT_ADDRESS, &[]),
             Err(Error::InvalidWriteLength {
                 expected: 1,
                 actual: 0,
             })
         );
         assert_eq!(
-            model.write(ADDRESS, &[SERIAL_NUMBER_COMMAND, 0x00]),
+            model.write(DEFAULT_ADDRESS, &[SERIAL_NUMBER_COMMAND, 0x00]),
             Err(Error::InvalidWriteLength {
                 expected: 1,
                 actual: 2,
