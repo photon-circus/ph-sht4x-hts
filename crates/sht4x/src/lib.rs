@@ -358,27 +358,44 @@ where
     }
 }
 
+#[inline(always)]
 fn crc8(bytes: [u8; 2]) -> u8 {
     let mut crc = 0xff;
+
     for byte in bytes {
         crc ^= byte;
+
         for _ in 0..8 {
-            crc = if crc & 0x80 != 0 {
-                (crc << 1) ^ 0x31
-            } else {
-                crc << 1
-            };
+            let mask = 0u8.wrapping_sub(crc >> 7);
+            crc = (crc << 1) ^ (0x31 & mask);
         }
     }
+
     crc
 }
 
+#[inline]
+fn div_65535(n: u32) -> u32 {
+    // Exact for the ranges used below.
+    (n + (n >> 16) + 1) >> 16
+}
+
 fn convert_temperature(ticks: u16) -> i32 {
-    -45_000 + (175_000_i64 * i64::from(ticks) / 65_535) as i32
+    let ticks = u32::from(ticks);
+
+    // 175_000 = 2 * 65_535 + 43_930
+    let fractional = div_65535(43_930 * ticks);
+
+    -45_000 + (2 * ticks + fractional) as i32
 }
 
 fn convert_humidity(ticks: u16) -> i32 {
-    -6_000 + (125_000_i64 * i64::from(ticks) / 65_535) as i32
+    let ticks = u32::from(ticks);
+
+    // 125_000 = 65_535 + 59_465
+    let fractional = div_65535(59_465 * ticks);
+
+    -6_000 + (ticks + fractional) as i32
 }
 
 /// Validate both CRC-8 bytes and return the two 16-bit words in transmission

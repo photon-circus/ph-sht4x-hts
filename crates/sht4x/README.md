@@ -2,19 +2,46 @@
 
 Incubating unpublished async no_std Rust driver for the Sensirion SHT4x humidity and temperature sensors — SHT40, SHT41, SHT43, and SHT45 — over abstract I2C.
 
+[![Lifecycle: incubating](https://img.shields.io/badge/lifecycle-incubating-orange.svg)](https://github.com/photon-circus/.github/blob/main/docs/PERIPHERAL_DRIVER_PROFILE.md)
+[![MSRV](https://img.shields.io/badge/MSRV-1.98.0-blue.svg)](https://github.com/photon-circus/ph-sht4x-hts/blob/main/Cargo.toml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/photon-circus/ph-sht4x-hts/blob/main/crates/sht4x/LICENSE)
+
 > [!WARNING]
-> **Lifecycle:** Incubating — bounded work intended to become a supported driver
+> **Lifecycle:** Incubating — the responsibility is bounded and intended to become a supported driver. Compatibility follows the documented version and release policy, not lifecycle alone.
 > **Distribution:** Unpublished; the candidate version is `0.1.0-incubating.1` and the manifest sets `publish = false`.
-> **Supported devices:** SHT40, SHT41, SHT43, and SHT45, at any of the three documented I2C addresses. The address comes from the part number, not the sensor model.
 > **Model conformance:** The unpublished host-only conformance check covers the driver's serial-number read, one-shot T/RH measurement at all three repeatabilities, all six heater pulses, soft-reset abort/recovery, and every documented address, against the independent model. That model implements behavior the datasheet states for the SHT4x without part qualification, recorded as `SHT4X-FAMILY-SCOPE-001`; **no check has been executed against any physical part**, so coverage across the family rests on that documentary basis rather than on execution.
-> **Physical evidence:** None. No reviewed physical-device evidence supports a physically observed or qualified claim.
+> **Physical evidence:** None. No reviewed physical-device evidence supports a physically observed or ph-hil-qualified claim.
 > Evidence and limitations apply only to named operations; publication does not imply hardware qualification.
 
 ## Availability
 
 This package is not available from crates.io.
 
-## Current state
+## Usage
+
+```rust,no_run
+use ph_sht4x_hts::{Address, Repeatability, Sht4x};
+
+async fn read_once<I2C, DELAY>(
+    i2c: I2C,
+    delay: DELAY,
+) -> Result<(), ph_sht4x_hts::Error<I2C::Error>>
+where
+    I2C: embedded_hal_async::i2c::I2c,
+    DELAY: embedded_hal_async::delay::DelayNs,
+{
+    let mut sensor = Sht4x::new(Address::B, i2c, delay);
+    let _serial = sensor.read_serial_number().await?;
+    let _measurement = sensor.measure(Repeatability::High).await?;
+    Ok(())
+}
+```
+
+The caller supplies abstract `embedded-hal-async` I2C and delay resources and
+the 7-bit address from part-number position 7. The driver never infers the
+address from the sensor model and never scans the bus.
+
+## Semantics and limitations
 
 The package supports implementation-tested serial-number and one-shot T/RH
 reads, all six heater pulses, and soft reset for one SHT4x — an SHT40, SHT41,
@@ -59,8 +86,6 @@ is called.
   error the driver could otherwise have corrected: the certificate refines the
   stated accuracy of a reading, it does not change how the reading is converted.
 
-## Heater readings are not ambient readings
-
 A heater pulse converts while the heater is still on (`SHT45-HEAT-SEQ-001`). The
 `Measurement` it returns therefore describes the heated sensor rather than the
 surrounding air. How the two differ is heater physics, which this repository
@@ -72,11 +97,41 @@ a reading taken with the heater off. What either reading implies about the
 surrounding air is a system-calibration question this repository does not
 answer.
 
+## Features
+
+This crate has no optional features and no default-feature effects.
+
 ## Platform support
 
-The crate is `no_std`, uses abstract `embedded-hal-async` I2C and delay resources, allocates no memory, and forbids unsafe code. The caller owns those resources, power-up timing, scheduling, retries, recovery policy, and heater cadence or duty-cycle policy. The driver owns the serial, measurement, heater-pulse, and soft-reset commands' execution waits. Model conformance covers the serial-number read, T/RH measurement at high, medium, and low repeatability, all six heater pulses, soft-reset abort/recovery, and every documented address. It compares the driver against the independent model, which implements behavior the datasheet states for the SHT4x without part qualification (`SHT4X-FAMILY-SCOPE-001`). No check has been run against a physical part of any model, so coverage across the family rests on that documentary basis and not on execution; no physical-device claim is made.
+Requires Rust `1.98.0`. The crate is `no_std`, allocates no memory, and forbids
+unsafe code (`#![forbid(unsafe_code)]` applies to this crate's source, not its
+transitive graph). It uses abstract `embedded-hal-async` I2C and delay
+resources. The caller owns those resources, power-up timing, scheduling,
+retries, recovery policy, and heater cadence or duty-cycle policy. The driver
+owns the serial, measurement, heater-pulse, and soft-reset commands' execution
+waits.
 
-The independent model is a separate package; its existence does not establish conformance for this driver.
+The local gate compiles the driver in the release profile for `thumbv6m-none-eabi` (Cortex-M0, no
+atomics), `thumbv7m-none-eabi` (Cortex-M3, atomics, soft-float),
+`thumbv7em-none-eabihf` (Cortex-M4F, atomics, hard-float),
+`thumbv8m.main-none-eabihf` (Cortex-M33, ARMv8-M), and
+`riscv32imac-unknown-none-elf` (RISC-V with atomics). The crate is
+target-agnostic above its abstract resources; those five are the compilation
+evidence that exists, not a statement that other targets are unsupported. Host
+compilation alone establishes nothing about any of them.
+
+The independent model is a separate unpublished package and is not a user
+dependency of this crate. Its existence does not establish conformance for this
+driver.
+
+## Documentation and support
+
+- Source repository: <https://github.com/photon-circus/ph-sht4x-hts>
+- Issues: <https://github.com/photon-circus/ph-sht4x-hts/issues>
+- Security reports: [SECURITY.md](https://github.com/photon-circus/ph-sht4x-hts/blob/main/SECURITY.md)
+- Device propositions and evidence: [repository contract](https://github.com/photon-circus/ph-sht4x-hts/blob/main/docs/CONTRACT.md)
+
+This package is unpublished, so there is no docs.rs page.
 
 ## License
 

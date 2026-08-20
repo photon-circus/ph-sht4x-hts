@@ -55,3 +55,18 @@ SHT45, so coverage across the family rests on that documentary basis rather
 than on execution.
 
 The adapter is test-only and is not compiled into either production library.
+
+## Execution coverage of the comparison
+
+The named checks can pass while leaving production lines unexecuted. The local
+gate reports that remainder as model-conformance coverage: production driver
+and model lines, functions, and regions walked while this suite ran. Because
+no physical run exists to close the gap, that figure is the honest completeness
+of the host-only evidence — not a quality score and not a threshold.
+
+Unit-test coverage of the same files is implementation-tested evidence. It must
+not be cited as if it measured this comparison.
+
+The current percentages are produced by `cargo xtask ci`. They appear in the
+printed `ci summary` and in `target/coverage/summary.txt`; they are not copied
+here, where they would go stale.

@@ -1,5 +1,21 @@
 # Agent notes — ph-sht4x-hts
 
+Adopted Photon Circus organization standards and this repository's recorded
+contracts are authoritative. [`CONTRIBUTING.md`](CONTRIBUTING.md) owns the
+shared contribution workflow. Agent path: this file → `CONTRIBUTING.md` →
+[`docs/CONTRACT.md`](docs/CONTRACT.md). Resolve inconsistent instructions with
+a maintainer before changing the affected behavior.
+
+## Boundary and priorities
+
+Keep the repository responsible only for truthful supported SHT4x operations on
+one device through an abstract async I2C bus. Concrete board resources,
+scheduling, workflow retry, cross-device coordination, and product recovery
+remain integration concerns.
+
+Prioritize truthful supported behavior, explicit state/error semantics, and
+narrow evidence over API breadth.
+
 The supported set is the SHT40, SHT41, SHT43, and SHT45. It rests on
 `SHT4X-FAMILY-SCOPE-001` — a statement about what the datasheet declares, not
 about what any part does. Nothing here has been executed against a physical
@@ -7,19 +23,12 @@ device of any model, and the conformance suite exercises one modeled behavior
 across three addresses, not four devices. Do not let that become "the driver
 supports four sensors" in any surface that a caller reads.
 
-The adopted Photon Circus organization standards and this repository's recorded contracts are authoritative. Read `README.md` and `docs/CONTRACT.md` before changing behavior.
+## Canonical sources
 
-## Boundary and priorities
-
-Keep the repository responsible only for truthful supported SHT4x operations on one device through an abstract async I2C bus. Concrete board resources, scheduling, workflow retry, cross-device coordination, and product recovery remain integration concerns.
-
-Prioritize truthful supported behavior, explicit state/error semantics, and narrow evidence over API breadth.
-
-## Coupled changes
-
-- A changed device proposition updates its canonical evidence record, affected implementation/tests, and local consequences in public documentation.
-- A changed public guarantee updates tests and `CHANGELOG.md`.
-- A changed lifecycle, distribution, model, or physical-evidence fact updates both root and package status disclosures.
+- [`docs/CONTRACT.md`](docs/CONTRACT.md) owns device propositions, provenance, and evidence state.
+- Package READMEs and rustdoc own the local API or product consequence; they cite identifiers and do not copy propositions.
+- [`CHANGELOG.md`](CHANGELOG.md) owns caller-visible guarantees.
+- Root and packaged driver READMEs share one four-field status block; a lifecycle, distribution, model, or physical-evidence change updates both.
 
 ## Load-bearing invariants and traps
 
@@ -52,6 +61,25 @@ Things that are expensive to rediscover and cheap to get subtly wrong.
   say what the device does, the model returns an explicit limitation. Do not
   pick a plausible outcome because the state machine can continue.
 
-## Verification and protected actions
+## Commands and claims
 
-Run `cargo xtask ci`; report skipped checks as skipped. Do not publish, create a release, change repository visibility or lifecycle, claim model/physical evidence, or add speculative HIL/model/application scaffolding without explicit maintainer direction and the required evidence.
+`cargo xtask ci` is the canonical local gate. It establishes named software
+properties: formatting, lifecycle-lock, lints, tests in both the dev and
+release profiles, host coverage summaries, release compilation of verified
+targets, documentation, and package construction. It prints a final summary of
+every check and the recorded coverage metrics. Report skipped and indeterminate
+checks as such. None of those results is silicon behavior, physical timing, or
+hardware support. When quoting coverage, use the model-conformance totals to
+describe host-only evidence completeness. Unit-test totals describe the
+implementation-tested layer. Do not freeze either figure in a README or badge.
+
+A changed public guarantee updates tests and a caller-facing `CHANGELOG.md`
+entry. Changelog entries record what a caller can do, match, or must not
+assume, not the internal work that established it.
+
+## Protected actions
+
+Do not publish, create a release, change repository visibility or lifecycle,
+claim model or physical evidence, or add speculative HIL, model, or application
+scaffolding without explicit maintainer direction and the required evidence.
+See [`RELEASING.md`](RELEASING.md).

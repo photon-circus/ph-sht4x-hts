@@ -2,6 +2,7 @@ use serde::Deserialize;
 use std::collections::HashSet;
 use std::env;
 use std::ffi::OsString;
+use std::fmt::Write as _;
 use std::fs;
 use std::io;
 use std::path::{Component, Path, PathBuf};
@@ -64,19 +65,120 @@ struct CoverageData {
 #[derive(Debug, Deserialize, PartialEq)]
 struct CoverageFile {
     filename: String,
+    #[serde(default)]
+    summary: Option<CoverageTotals>,
 }
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 struct CoverageTotals {
     functions: CoverageMetric,
     lines: CoverageMetric,
     regions: CoverageMetric,
 }
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 struct CoverageMetric {
     count: u64,
     covered: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct CheckRecord {
+    name: String,
+    status: CheckStatus,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum CheckStatus {
+    Passed,
+    Skipped(String),
+    Indeterminate(String),
+    Failed(String),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct CoverageSnapshot {
+    label: String,
+    report: PathBuf,
+    totals: CoverageTotals,
+    files: Vec<CoverageFileSnapshot>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct CoverageFileSnapshot {
+    path: String,
+    totals: CoverageTotals,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+struct CiSummary {
+    checks: Vec<CheckRecord>,
+    coverage: Vec<CoverageSnapshot>,
+}
+
+impl CiSummary {
+    fn record(
+        &mut self,
+        name: impl Into<String>,
+        result: Result<(), String>,
+    ) -> Result<(), String> {
+        match result {
+            Ok(()) => {
+                self.pass(name);
+                Ok(())
+            }
+            Err(error) => {
+                self.fail(name, &error);
+                Err(error)
+            }
+        }
+    }
+
+    fn pass(&mut self, name: impl Into<String>) {
+        self.checks.push(CheckRecord {
+            name: name.into(),
+            status: CheckStatus::Passed,
+        });
+    }
+
+    fn record_coverage(
+        &mut self,
+        name: impl Into<String>,
+        result: Result<CoverageSnapshot, String>,
+    ) -> Result<(), String> {
+        match result {
+            Ok(snapshot) => {
+                self.pass(name);
+                self.coverage.push(snapshot);
+                Ok(())
+            }
+            Err(error) => {
+                self.fail(name, &error);
+                Err(error)
+            }
+        }
+    }
+
+    fn skip(&mut self, name: impl Into<String>, reason: impl Into<String>) {
+        self.checks.push(CheckRecord {
+            name: name.into(),
+            status: CheckStatus::Skipped(reason.into()),
+        });
+    }
+
+    fn indeterminate(&mut self, name: impl Into<String>, reason: impl Into<String>) {
+        self.checks.push(CheckRecord {
+            name: name.into(),
+            status: CheckStatus::Indeterminate(reason.into()),
+        });
+    }
+
+    fn fail(&mut self, name: impl Into<String>, error: impl Into<String>) {
+        self.checks.push(CheckRecord {
+            name: name.into(),
+            status: CheckStatus::Failed(error.into()),
+        });
+    }
 }
 
 fn main() {
@@ -89,6 +191,8 @@ fn main() {
         }
         Some("ci") if args.next().is_none() => run_ci(),
         Some("ci") => Err("the `ci` command does not accept arguments".to_owned()),
+        Some("fmt") if args.next().is_none() => run_fmt(),
+        Some("fmt") => Err("the `fmt` command does not accept arguments".to_owned()),
         Some(command) => Err(format!("unknown xtask command `{command}`")),
     };
 
@@ -101,112 +205,337 @@ fn main() {
 fn print_usage() {
     println!("usage:");
     println!("  cargo xtask ci");
+    println!("  cargo xtask fmt");
+}
+
+macro_rules! ci_step {
+    ($summary:ident, $name:expr, $body:expr) => {{
+        let name = $name;
+        println!("check: {name}");
+        if let Err(error) = $summary.record(name, $body) {
+            emit_ci_summary(&$summary);
+            return Err(error);
+        }
+    }};
+}
+
+macro_rules! ci_coverage_step {
+    ($summary:ident, $name:expr, $body:expr) => {{
+        let name = $name;
+        println!("check: {name}");
+        if let Err(error) = $summary.record_coverage(name, $body) {
+            emit_ci_summary(&$summary);
+            return Err(error);
+        }
+    }};
 }
 
 fn run_ci() -> Result<(), String> {
     let workspace = workspace_dir()?;
     let config = load_config()?;
+    remove_stale_coverage_summary(&workspace, &config.coverage)?;
+    let mut summary = CiSummary::default();
 
-    println!("check: formatting");
-    run_cargo(&workspace, ["fmt", "--all", "--", "--check"])?;
+    ci_step!(
+        summary,
+        "formatting",
+        run_cargo(&workspace, rustfmt_args(true))
+    );
+    ci_step!(summary, "lifecycle version and publication lock", {
+        config.lifecycle_packages.iter().try_for_each(|package| {
+            validate_manifest(&workspace, package, config.expected_version.as_str())
+        })
+    });
+    ci_step!(
+        summary,
+        "clippy",
+        run_cargo(
+            &workspace,
+            [
+                "clippy",
+                "--locked",
+                "--workspace",
+                "--all-targets",
+                "--all-features",
+                "--",
+                "-D",
+                "warnings",
+            ],
+        )
+    );
+    ci_step!(summary, "tests", run_cargo(&workspace, test_args(false)));
+    ci_step!(
+        summary,
+        "release tests",
+        run_cargo(&workspace, test_args(true))
+    );
 
-    println!("check: lifecycle version and publication lock");
-    for package in &config.lifecycle_packages {
-        validate_manifest(&workspace, package, config.expected_version.as_str())?;
+    ci_coverage_step!(
+        summary,
+        "unit test coverage",
+        run_coverage(
+            &workspace,
+            &config.coverage,
+            "unit.json",
+            "unit tests",
+            unit_coverage_args,
+        )
+    );
+    ci_coverage_step!(
+        summary,
+        "model-conformance coverage",
+        run_coverage(
+            &workspace,
+            &config.coverage,
+            "conformance.json",
+            "model conformance",
+            conformance_coverage_args,
+        )
+    );
+    if let Err(error) = write_coverage_summary_file(&workspace, &config.coverage, &summary.coverage)
+    {
+        summary.fail("coverage summary file", &error);
+        emit_ci_summary(&summary);
+        return Err(error);
     }
-
-    println!("check: clippy");
-    run_cargo(
-        &workspace,
-        [
-            "clippy",
-            "--locked",
-            "--workspace",
-            "--all-targets",
-            "--all-features",
-            "--",
-            "-D",
-            "warnings",
-        ],
-    )?;
-
-    println!("check: tests");
-    run_cargo(
-        &workspace,
-        ["test", "--locked", "--workspace", "--all-features"],
-    )?;
-
-    run_coverage(&workspace, &config.coverage)?;
 
     println!("check: supported target compilation");
     let installed_targets = installed_targets(&workspace);
     for target in &config.supported_targets {
+        let name = format!("target {target} (release)");
         match target_decision(&installed_targets, target) {
-            TargetDecision::Build => run_cargo(
-                &workspace,
-                [
-                    "build",
-                    "--locked",
-                    "-p",
-                    config.driver.package.as_str(),
-                    "--target",
-                    target.as_str(),
-                ],
-            )?,
+            TargetDecision::Build => ci_step!(
+                summary,
+                &name,
+                run_cargo(
+                    &workspace,
+                    [
+                        "build",
+                        "--locked",
+                        "--release",
+                        "-p",
+                        config.driver.package.as_str(),
+                        "--target",
+                        target.as_str(),
+                    ],
+                )
+            ),
             TargetDecision::RustupUnavailable => {
                 println!("skipped: target {target}, rustup is unavailable");
+                summary.skip(&name, "rustup is unavailable");
             }
             TargetDecision::QueryFailed => {
                 println!(
                     "indeterminate: target {target}, the installed-target list could not be read"
                 );
+                summary.indeterminate(&name, "the installed-target list could not be read");
             }
             TargetDecision::NotInstalled => {
                 println!("skipped: target {target} is not installed");
+                summary.skip(&name, "not installed");
             }
         }
     }
 
-    println!("check: documentation");
-    let mut documentation = cargo_command(&workspace);
-    documentation.env("RUSTDOCFLAGS", "-D warnings").args([
-        "doc",
-        "--locked",
-        "--workspace",
-        "--all-features",
-        "--no-deps",
-    ]);
-    run(&mut documentation)?;
+    ci_step!(summary, "documentation", {
+        let mut documentation = cargo_command(&workspace);
+        documentation.env("RUSTDOCFLAGS", "-D warnings").args([
+            "doc",
+            "--locked",
+            "--workspace",
+            "--all-features",
+            "--no-deps",
+        ]);
+        run(&mut documentation)
+    });
 
     let allow_dirty = package_allow_dirty(&workspace);
 
-    println!("check: package construction");
-    run_package_command(
-        &workspace,
-        config.driver.manifest.as_str(),
-        allow_dirty,
-        false,
-    )?;
-
-    println!("check: package contents");
-    run_package_command(
-        &workspace,
-        config.driver.manifest.as_str(),
-        allow_dirty,
-        true,
-    )?;
+    ci_step!(
+        summary,
+        "package construction",
+        run_package_command(
+            &workspace,
+            config.driver.manifest.as_str(),
+            allow_dirty,
+            false,
+        )
+    );
+    ci_step!(
+        summary,
+        "package contents",
+        run_package_command(
+            &workspace,
+            config.driver.manifest.as_str(),
+            allow_dirty,
+            true,
+        )
+    );
 
     if executable_available("cargo-deny") {
-        println!("check: dependencies and licenses");
-        let mut deny = Command::new("cargo");
-        deny.current_dir(&workspace).args(["deny", "check"]);
-        run(&mut deny)?;
+        ci_step!(summary, "dependencies and licenses", {
+            let mut deny = Command::new("cargo");
+            deny.current_dir(&workspace).args(["deny", "check"]);
+            run(&mut deny)
+        });
     } else {
         println!("skipped: cargo-deny is not installed");
+        summary.skip("dependencies and licenses", "cargo-deny is not installed");
     }
 
-    println!("passed: routine local software gate");
+    emit_ci_summary(&summary);
     Ok(())
+}
+
+fn run_fmt() -> Result<(), String> {
+    let workspace = workspace_dir()?;
+    println!("fmt: applying rustfmt");
+    run_cargo(&workspace, rustfmt_args(false))?;
+    Ok(())
+}
+
+fn rustfmt_args(check: bool) -> Vec<&'static str> {
+    let mut args = vec!["fmt", "--all"];
+    if check {
+        args.extend(["--", "--check"]);
+    }
+    args
+}
+
+fn test_args(release: bool) -> Vec<&'static str> {
+    let mut args = vec!["test", "--locked", "--workspace", "--all-features"];
+    if release {
+        args.push("--release");
+    }
+    args
+}
+
+fn emit_ci_summary(summary: &CiSummary) {
+    print!("{}", format_ci_summary(summary));
+}
+
+fn format_ci_summary(summary: &CiSummary) -> String {
+    let mut out = String::from("\nci summary\n----------\n");
+    for check in &summary.checks {
+        match &check.status {
+            CheckStatus::Passed => {
+                writeln!(out, "  {:<13} {}", "passed", check.name).unwrap();
+            }
+            CheckStatus::Skipped(reason) => {
+                writeln!(out, "  {:<13} {}: {reason}", "skipped", check.name).unwrap();
+            }
+            CheckStatus::Indeterminate(reason) => {
+                writeln!(out, "  {:<13} {}: {reason}", "indeterminate", check.name).unwrap();
+            }
+            CheckStatus::Failed(error) => {
+                writeln!(out, "  {:<13} {}: {error}", "failed", check.name).unwrap();
+            }
+        }
+    }
+
+    writeln!(out).unwrap();
+    out.push_str(&format_coverage_section(&summary.coverage));
+
+    let passed = count_status(&summary.checks, |status| {
+        matches!(status, CheckStatus::Passed)
+    });
+    let skipped = count_status(&summary.checks, |status| {
+        matches!(status, CheckStatus::Skipped(_))
+    });
+    let indeterminate = count_status(&summary.checks, |status| {
+        matches!(status, CheckStatus::Indeterminate(_))
+    });
+
+    writeln!(out).unwrap();
+    if let Some(failed) = summary
+        .checks
+        .iter()
+        .find(|check| matches!(check.status, CheckStatus::Failed(_)))
+    {
+        writeln!(
+            out,
+            "result  failed  {}  ({passed} passed, {skipped} skipped, {indeterminate} indeterminate)",
+            failed.name
+        )
+        .unwrap();
+    } else {
+        writeln!(
+            out,
+            "result  passed  {passed} passed, {skipped} skipped, {indeterminate} indeterminate"
+        )
+        .unwrap();
+    }
+    out
+}
+
+fn count_status(checks: &[CheckRecord], predicate: impl Fn(&CheckStatus) -> bool) -> usize {
+    checks
+        .iter()
+        .filter(|check| predicate(&check.status))
+        .count()
+}
+
+fn format_coverage_section(snapshots: &[CoverageSnapshot]) -> String {
+    let mut out = String::new();
+    if snapshots.is_empty() {
+        writeln!(
+            out,
+            "coverage  not recorded (software execution; not a threshold or physical evidence)"
+        )
+        .unwrap();
+        return out;
+    }
+
+    writeln!(
+        out,
+        "coverage  software execution only; not a threshold or physical evidence"
+    )
+    .unwrap();
+    for snapshot in snapshots {
+        writeln!(
+            out,
+            "  {}  lines {}  functions {}  regions {}",
+            snapshot.label,
+            format_metric(&snapshot.totals.lines),
+            format_metric(&snapshot.totals.functions),
+            format_metric(&snapshot.totals.regions),
+        )
+        .unwrap();
+        for file in &snapshot.files {
+            writeln!(
+                out,
+                "    {}  lines {}",
+                file.path,
+                format_metric(&file.totals.lines),
+            )
+            .unwrap();
+        }
+        writeln!(
+            out,
+            "    report  {}",
+            snapshot.report.display().to_string().replace('\\', "/")
+        )
+        .unwrap();
+    }
+    out
+}
+
+fn write_coverage_summary_file(
+    workspace: &Path,
+    config: &CoverageConfig,
+    snapshots: &[CoverageSnapshot],
+) -> Result<(), String> {
+    let path = workspace.join(&config.output_directory).join("summary.txt");
+    fs::write(&path, format_coverage_section(snapshots)).map_err(|error| {
+        format!(
+            "could not write coverage summary {}: {error}",
+            path.display()
+        )
+    })
+}
+
+fn remove_stale_coverage_summary(workspace: &Path, config: &CoverageConfig) -> Result<(), String> {
+    remove_stale_coverage_artifact(&workspace.join(&config.output_directory).join("summary.txt"))
 }
 
 fn workspace_dir() -> Result<PathBuf, String> {
@@ -472,7 +801,13 @@ fn value_without_comment(value: &str) -> &str {
     value
 }
 
-fn run_coverage(workspace: &Path, config: &CoverageConfig) -> Result<(), String> {
+fn run_coverage(
+    workspace: &Path,
+    config: &CoverageConfig,
+    report_name: &str,
+    label: &str,
+    args: fn(&CoverageConfig, &Path) -> Vec<OsString>,
+) -> Result<CoverageSnapshot, String> {
     if !executable_available("cargo-llvm-cov") {
         return Err(
             "cargo-llvm-cov is required for coverage; install it with `cargo install cargo-llvm-cov --locked`"
@@ -488,22 +823,48 @@ fn run_coverage(workspace: &Path, config: &CoverageConfig) -> Result<(), String>
         )
     })?;
 
-    let unit_report = output_directory.join("unit.json");
-    println!("check: unit test coverage");
-    remove_stale_report(&unit_report)?;
-    run_cargo(workspace, unit_coverage_args(config, &unit_report))?;
-    print_coverage_summary(workspace, "unit tests", &unit_report)?;
+    let report = output_directory.join(report_name);
+    remove_stale_coverage_artifact(&report)?;
+    run_cargo(workspace, args(config, &report))?;
+    coverage_snapshot(workspace, label, &report)
+}
 
-    let conformance_report = output_directory.join("conformance.json");
-    println!("check: model-conformance coverage");
-    remove_stale_report(&conformance_report)?;
-    run_cargo(
-        workspace,
-        conformance_coverage_args(config, &conformance_report),
-    )?;
-    print_coverage_summary(workspace, "model conformance", &conformance_report)?;
+fn coverage_snapshot(
+    workspace: &Path,
+    label: &str,
+    path: &Path,
+) -> Result<CoverageSnapshot, String> {
+    let contents = fs::read_to_string(path).map_err(|error| {
+        format!(
+            "could not read {label} coverage report {}: {error}",
+            path.display()
+        )
+    })?;
+    let summary = parse_coverage_summary(path, &contents)?;
+    Ok(CoverageSnapshot {
+        label: label.to_owned(),
+        report: path.strip_prefix(workspace).unwrap_or(path).to_path_buf(),
+        totals: summary.totals.clone(),
+        files: summary
+            .files
+            .iter()
+            .filter_map(|file| {
+                Some(CoverageFileSnapshot {
+                    path: display_coverage_path(workspace, &file.filename),
+                    totals: file.summary.clone()?,
+                })
+            })
+            .collect(),
+    })
+}
 
-    Ok(())
+fn display_coverage_path(workspace: &Path, filename: &str) -> String {
+    let path = Path::new(filename);
+    path.strip_prefix(workspace)
+        .unwrap_or(path)
+        .display()
+        .to_string()
+        .replace('\\', "/")
 }
 
 fn unit_coverage_args(config: &CoverageConfig, output: &Path) -> Vec<OsString> {
@@ -559,35 +920,15 @@ fn conformance_coverage_args(config: &CoverageConfig, output: &Path) -> Vec<OsSt
     args
 }
 
-fn remove_stale_report(path: &Path) -> Result<(), String> {
+fn remove_stale_coverage_artifact(path: &Path) -> Result<(), String> {
     match fs::remove_file(path) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(format!(
-            "could not remove stale coverage report {}: {error}",
+            "could not remove stale coverage artifact {}: {error}",
             path.display()
         )),
     }
-}
-
-fn print_coverage_summary(workspace: &Path, label: &str, path: &Path) -> Result<(), String> {
-    let contents = fs::read_to_string(path).map_err(|error| {
-        format!(
-            "could not read {label} coverage report {}: {error}",
-            path.display()
-        )
-    })?;
-    let summary = parse_coverage_summary(path, &contents)?;
-    let display_path = path.strip_prefix(workspace).unwrap_or(path);
-
-    println!(
-        "coverage: {label}: lines {}; functions {}; regions {}; report {}",
-        format_metric(&summary.totals.lines),
-        format_metric(&summary.totals.functions),
-        format_metric(&summary.totals.regions),
-        display_path.display()
-    );
-    Ok(())
 }
 
 fn parse_coverage_summary(path: &Path, contents: &str) -> Result<CoverageData, String> {
@@ -854,6 +1195,164 @@ publish = true
         }
     }
 
+    fn sample_coverage_snapshot(label: &str, report: &str) -> CoverageSnapshot {
+        CoverageSnapshot {
+            label: label.to_owned(),
+            report: PathBuf::from(report),
+            totals: CoverageTotals {
+                functions: CoverageMetric {
+                    count: 3,
+                    covered: 2,
+                },
+                lines: CoverageMetric {
+                    count: 10,
+                    covered: 9,
+                },
+                regions: CoverageMetric {
+                    count: 12,
+                    covered: 10,
+                },
+            },
+            files: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn rustfmt_write_omits_check_and_the_gate_passes_it() {
+        assert_eq!(rustfmt_args(false), ["fmt", "--all"]);
+        assert_eq!(rustfmt_args(true), ["fmt", "--all", "--", "--check"]);
+    }
+
+    #[test]
+    fn ci_summary_reports_checks_and_uses_coverage_totals() {
+        let mut summary = CiSummary::default();
+        summary.pass("formatting");
+        summary.skip("dependencies and licenses", "cargo-deny is not installed");
+        summary.indeterminate(
+            "target thumbv7em-none-eabihf (release)",
+            "the installed-target list could not be read",
+        );
+        summary.coverage.push(CoverageSnapshot {
+            label: "unit tests".to_owned(),
+            report: PathBuf::from("target").join("coverage").join("unit.json"),
+            totals: CoverageTotals {
+                functions: CoverageMetric {
+                    count: 3,
+                    covered: 2,
+                },
+                lines: CoverageMetric {
+                    count: 10,
+                    covered: 9,
+                },
+                regions: CoverageMetric {
+                    count: 12,
+                    covered: 10,
+                },
+            },
+            files: vec![CoverageFileSnapshot {
+                path: "crates/sht4x/src/lib.rs".to_owned(),
+                totals: CoverageTotals {
+                    functions: CoverageMetric {
+                        count: 3,
+                        covered: 2,
+                    },
+                    lines: CoverageMetric {
+                        count: 10,
+                        covered: 9,
+                    },
+                    regions: CoverageMetric {
+                        count: 12,
+                        covered: 10,
+                    },
+                },
+            }],
+        });
+
+        let rendered = format_ci_summary(&summary);
+        assert!(rendered.contains("passed        formatting"));
+        assert!(
+            rendered
+                .contains("skipped       dependencies and licenses: cargo-deny is not installed")
+        );
+        assert!(rendered.contains("indeterminate target thumbv7em-none-eabihf (release): the installed-target list could not be read"));
+        assert!(
+            rendered.contains(
+                "coverage  software execution only; not a threshold or physical evidence"
+            )
+        );
+        assert!(rendered.contains(
+            "unit tests  lines 9/10 (90.00%)  functions 2/3 (66.67%)  regions 10/12 (83.33%)"
+        ));
+        assert!(rendered.contains("crates/sht4x/src/lib.rs  lines 9/10 (90.00%)"));
+        assert!(rendered.contains("report  target/coverage/unit.json"));
+        assert!(rendered.contains("result  passed  1 passed, 1 skipped, 1 indeterminate"));
+        assert!(!rendered.contains("result  failed"));
+    }
+
+    #[test]
+    fn ci_summary_names_the_failed_check() {
+        let mut summary = CiSummary::default();
+        summary.pass("formatting");
+        summary.fail("clippy", "warnings denied");
+        let rendered = format_ci_summary(&summary);
+        assert!(rendered.contains("failed        clippy: warnings denied"));
+        assert!(rendered.contains("coverage  not recorded"));
+        assert!(
+            rendered.contains("result  failed  clippy  (1 passed, 0 skipped, 0 indeterminate)")
+        );
+    }
+
+    #[test]
+    fn ci_summary_preserves_successful_coverage_when_the_next_check_fails() {
+        let mut summary = CiSummary::default();
+        summary
+            .record_coverage(
+                "unit test coverage",
+                Ok(sample_coverage_snapshot(
+                    "unit tests",
+                    "target/coverage/unit.json",
+                )),
+            )
+            .unwrap();
+        let error = summary
+            .record_coverage(
+                "model-conformance coverage",
+                Err("conformance command failed".to_owned()),
+            )
+            .unwrap_err();
+
+        assert_eq!(error, "conformance command failed");
+        assert_eq!(summary.coverage.len(), 1);
+        let rendered = format_ci_summary(&summary);
+        assert!(rendered.contains("passed        unit test coverage"));
+        assert!(
+            rendered
+                .contains("failed        model-conformance coverage: conformance command failed")
+        );
+        assert!(rendered.contains("unit tests  lines 9/10 (90.00%)"));
+        assert!(rendered.contains(
+            "result  failed  model-conformance coverage  (1 passed, 0 skipped, 0 indeterminate)"
+        ));
+    }
+
+    #[test]
+    fn test_invocation_runs_debug_and_optimized_profiles() {
+        assert_eq!(
+            test_args(false),
+            ["test", "--locked", "--workspace", "--all-features"]
+        );
+        assert_eq!(
+            test_args(true),
+            [
+                "test",
+                "--locked",
+                "--workspace",
+                "--all-features",
+                "--release",
+            ]
+        );
+    }
+
     #[test]
     fn committed_configuration_loads_and_propagates_repository_policy() {
         let config = load_config().unwrap();
@@ -870,7 +1369,13 @@ publish = true
         assert_eq!(config.driver.manifest, "crates/sht4x/Cargo.toml");
         assert_eq!(
             config.supported_targets,
-            ["thumbv7em-none-eabihf", "thumbv6m-none-eabi"]
+            [
+                "thumbv6m-none-eabi",
+                "thumbv7m-none-eabi",
+                "thumbv7em-none-eabihf",
+                "thumbv8m.main-none-eabihf",
+                "riscv32imac-unknown-none-elf",
+            ]
         );
         assert_eq!(
             config.coverage.unit_packages,
@@ -1128,18 +1633,35 @@ publish = true
     }
 
     #[test]
-    fn stale_coverage_report_is_removed_before_a_run() {
+    fn stale_coverage_artifact_is_removed_before_a_run() {
         let directory =
             env::temp_dir().join(format!("ph-sht4x-hts-coverage-test-{}", std::process::id()));
         fs::create_dir_all(&directory).unwrap();
         let report = directory.join("stale.json");
         fs::write(&report, "stale").unwrap();
 
-        remove_stale_report(&report).unwrap();
+        remove_stale_coverage_artifact(&report).unwrap();
         assert!(!report.exists());
-        remove_stale_report(&report).unwrap();
+        remove_stale_coverage_artifact(&report).unwrap();
 
         fs::remove_dir(&directory).unwrap();
+    }
+
+    #[test]
+    fn stale_coverage_summary_is_removed_before_gate_checks() {
+        let workspace =
+            env::temp_dir().join(format!("ph-sht4x-hts-summary-test-{}", std::process::id()));
+        let mut config = valid_config();
+        config.coverage.output_directory = "target/coverage".to_owned();
+        let output_directory = workspace.join(&config.coverage.output_directory);
+        fs::create_dir_all(&output_directory).unwrap();
+        let summary = output_directory.join("summary.txt");
+        fs::write(&summary, "stale evidence").unwrap();
+
+        remove_stale_coverage_summary(&workspace, &config.coverage).unwrap();
+        assert!(!summary.exists());
+
+        fs::remove_dir_all(&workspace).unwrap();
     }
 
     #[test]
@@ -1168,6 +1690,21 @@ publish = true
         assert_eq!(summary.totals.lines.count, 10);
         assert_eq!(summary.totals.lines.covered, 9);
         assert_eq!(format_metric(&summary.totals.lines), "9/10 (90.00%)");
+    }
+
+    #[test]
+    fn coverage_summary_parser_retains_per_file_metrics() {
+        let summary = parse_coverage_summary(
+            Path::new("coverage.json"),
+            r#"{"data":[{"files":[{"filename":"/ws/crates/sht4x/src/lib.rs","summary":{"functions":{"count":4,"covered":3},"lines":{"count":20,"covered":18},"regions":{"count":8,"covered":7}}}],"totals":{"functions":{"count":4,"covered":3},"lines":{"count":20,"covered":18},"regions":{"count":8,"covered":7}}}]}"#,
+        )
+        .unwrap();
+
+        assert_eq!(summary.files[0].summary.as_ref().unwrap().lines.covered, 18);
+        assert_eq!(
+            display_coverage_path(Path::new("/ws"), "/ws/crates/sht4x/src/lib.rs"),
+            "crates/sht4x/src/lib.rs"
+        );
     }
 
     #[test]

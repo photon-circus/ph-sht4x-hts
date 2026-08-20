@@ -2,6 +2,8 @@
 
 Unpublished independent behavioral model for selected SHT4x serial-number,
 one-shot T/RH, and heater-pulse operations, including soft-reset abort behavior.
+This crate is a host-only oracle for model and conformance tests; it is not a
+user dependency of the driver.
 
 > [!WARNING]
 > **Lifecycle:** Incubating. This package is unpublished and sets `publish = false`.
@@ -108,7 +110,9 @@ and never as a fabricated NACK or payload:
 Passing tests establish compatibility only with the behavior declared above.
 This package is a behavioral selection aid for model-only tests. It is not a
 public driver, not a claim of model conformance by `ph-sht4x-hts`, and not
-evidence of silicon behavior, electrical timing, or heater physics.
+evidence of silicon behavior, electrical timing, or heater physics. What
+agreement between the public driver and this model establishes is recorded in
+the [conformance package README](../sht4x-conformance/README.md).
 
 ## License
 
