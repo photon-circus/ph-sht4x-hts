@@ -75,9 +75,10 @@ targets, documentation, and package construction. It prints a final summary of
 every check and the recorded coverage metrics. Skipped or indeterminate checks
 make the gate incomplete and its command unsuccessful. None of those results is
 silicon behavior, physical timing, or hardware support. When quoting coverage,
-use the model-conformance totals to
-describe host-only evidence completeness. Unit-test totals describe the
-implementation-tested layer. Do not freeze either figure in a README or badge.
+use the model-conformance totals to describe host-only evidence completeness.
+Unit-test totals describe the implementation-tested layer. Each layer cleans
+its instrumentation artifacts before running; do not remove that isolation.
+Do not freeze either figure in a README or badge.
 
 A changed public guarantee updates tests and a caller-facing `CHANGELOG.md`
 entry. Changelog entries record what a caller can do, match, or must not

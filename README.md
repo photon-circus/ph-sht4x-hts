@@ -114,11 +114,13 @@ The gate writes machine-readable summaries to `target/coverage/unit.json` and
 `target/coverage/summary.txt`. The first JSON measures driver and independent-
 model code exercised by their unit tests; the second measures those production
 implementations when the host-only conformance suite runs and is the
-completeness figure to cite for host-only evidence. A missing coverage
-tool, failed coverage test, or empty report fails the gate. Coverage percentages
-are reported in the gate summary and in `summary.txt`; they are not thresholds,
-and they create no device, silicon, or physical-evidence claim. How to read
-them is under [Evidence and limitations](#evidence-and-limitations).
+completeness figure to cite for host-only evidence. Instrumented build artifacts
+are cleared before each layer so consecutive gate runs cannot merge their
+denominators. A missing coverage tool, failed coverage test, or empty report
+fails the gate. Coverage percentages are reported in the gate summary and in
+`summary.txt`; they are not thresholds, and they create no device, silicon, or
+physical-evidence claim. How to read them is under
+[Evidence and limitations](#evidence-and-limitations).
 
 When the gate finishes, it prints a summary of every check (`passed`, `skipped`,
 `indeterminate`, or `failed`), the recorded coverage metrics, and an overall

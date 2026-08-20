@@ -89,7 +89,9 @@ not a claim that other targets are unsupported.
   reports the unit and model-conformance coverage totals (and per-file line
   coverage) instead of leaving `target/coverage/*.json` unread. Percentages
   remain informational: they are not thresholds and are not physical evidence.
-  A durable copy is written to `target/coverage/summary.txt`.
+  A durable copy is written to `target/coverage/summary.txt`. Each coverage
+  layer now starts from clean instrumentation artifacts so consecutive runs do
+  not merge their denominators.
 
 - The local gate now runs the test suite in both the dev and release profiles,
   and compiles the verified bare-metal targets as `--release`. Optimized codegen

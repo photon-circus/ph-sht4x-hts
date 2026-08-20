@@ -842,6 +842,12 @@ fn run_coverage(
         );
     }
 
+    // cargo-llvm-cov can retain instrumented objects that match a later
+    // package selection, especially across consecutive unit and conformance
+    // runs on Windows. Clean before each evidence layer so neither a preceding
+    // layer nor an earlier gate can change the next report's denominator.
+    run_cargo(workspace, coverage_clean_args())?;
+
     let output_directory = workspace.join(&config.output_directory);
     fs::create_dir_all(&output_directory).map_err(|error| {
         format!(
@@ -892,6 +898,10 @@ fn display_coverage_path(workspace: &Path, filename: &str) -> String {
         .display()
         .to_string()
         .replace('\\', "/")
+}
+
+fn coverage_clean_args() -> [&'static str; 3] {
+    ["llvm-cov", "clean", "--workspace"]
 }
 
 fn unit_coverage_args(config: &CoverageConfig, output: &Path) -> Vec<OsString> {
@@ -1601,8 +1611,10 @@ publish = true
     }
 
     #[test]
-    fn coverage_commands_keep_unit_and_conformance_execution_separate() {
+    fn coverage_commands_clean_and_keep_execution_layers_separate() {
         let config = valid_config();
+        assert_eq!(coverage_clean_args(), ["llvm-cov", "clean", "--workspace"]);
+
         let unit = unit_coverage_args(&config.coverage, Path::new("unit.json"));
         let unit = unit
             .iter()
