@@ -1400,10 +1400,12 @@ publish = true
 
         assert_eq!(config.expected_version, TEST_EXPECTED_VERSION);
         assert_eq!(config.lifecycle_packages.len(), 3);
+        assert!(!config.lifecycle_packages[0].require_unpublished);
         assert!(
             config
                 .lifecycle_packages
                 .iter()
+                .skip(1)
                 .all(|package| package.require_unpublished)
         );
         assert_eq!(config.driver.package, "ph-sht4x-hts");

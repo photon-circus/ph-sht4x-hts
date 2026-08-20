@@ -9,12 +9,11 @@ versions are permanent and cannot be overwritten.
 
 ## Current distribution state
 
-The workspace is at `0.1.0-incubating.1` with `publish = false` on all three
-manifests. Nothing has been published or tagged. The canonical gate asserts
-both facts on every run, so an accidental version drift or an unlocked manifest
-fails before it reaches a release.
-
-Moving off that state is the deliberate act this document governs.
+The workspace release candidate is `0.1.0-incubating.1`. The driver manifest
+allows publication only to crates.io; the model and conformance manifests
+remain unpublished. The canonical gate asserts the version and that exact
+publication policy on every run, so accidental drift fails before it reaches a
+release.
 
 ## What each dimension means
 
@@ -22,7 +21,7 @@ Three dimensions are reported independently and must never be collapsed:
 
 | Dimension | Values | Current |
 | --- | --- | --- |
-| Distribution | unpublished, SemVer prerelease, ordinary release | Unpublished |
+| Distribution | unpublished, SemVer prerelease, ordinary release | SemVer prerelease `0.1.0-incubating.1` |
 | Software maturity | Experimental, Incubating, Active, Maintenance, Archived | Incubating |
 | Evidence | implementation-tested, model-conformant, physically observed, qualified | Model-conformant for every public operation; no physical evidence |
 

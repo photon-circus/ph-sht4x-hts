@@ -8,17 +8,19 @@ assume — not by the internal work that established it. Device propositions, ga
 mechanics, and internal refactors belong in `docs/CONTRACT.md`, the verification
 docs, and the commit history.
 
-Versioning follows [`RELEASING.md`](RELEASING.md). The workspace is unpublished
-at `0.1.0-incubating.1`.
+Versioning follows [`RELEASING.md`](RELEASING.md). The current release
+candidate is `0.1.0-incubating.1`.
 
-## Unreleased
+## 0.1.0-incubating.1 - 2026-08-20
 
-An incubating unpublished async `no_std` driver for truthful supported SHT4x
-operations on one device through an abstract async I2C bus. It covers the SHT40,
-SHT41, SHT43, and SHT45 at the three documented addresses. The limitation it
-accepts is a narrow boundary: no board resources, no heater duty-cycle policy,
-no SHT43 certificate retrieval, and no physical qualification. Host-model
-conformance is software evidence only.
+This initial prerelease adds an async `no_std` driver so embedded applications
+can use the documented SHT4x serial-number, measurement, heater, and reset
+operations through abstract I2C resources. It addresses the absence of a
+bounded Photon Circus SHT4x driver while deliberately leaving board resources,
+heater duty-cycle policy, SHT43 certificate retrieval, and physical
+qualification to integration. That narrow boundary is the cost of keeping the
+API and its claims truthful; host-model conformance remains software evidence
+only.
 
 Requires Rust `1.98.0` on the pinned toolchain. The local gate compiles the
 driver for `thumbv6m-none-eabi`, `thumbv7m-none-eabi`,

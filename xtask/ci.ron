@@ -3,7 +3,7 @@
     lifecycle_packages: [
         (
             manifest: "crates/sht4x/Cargo.toml",
-            require_unpublished: true,
+            require_unpublished: false,
         ),
         (
             manifest: "crates/sht4x-model/Cargo.toml",
