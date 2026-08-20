@@ -9,7 +9,7 @@ Incubating unpublished async no_std Rust driver for the Sensirion SHT4x humidity
 > [!WARNING]
 > **Lifecycle:** Incubating — the responsibility is bounded and intended to become a supported driver. Compatibility follows the documented version and release policy, not lifecycle alone.
 > **Distribution:** Unpublished; the candidate version is `0.1.0-incubating.1` and the manifest sets `publish = false`.
-> **Model conformance:** The unpublished host-only conformance check covers the driver's serial-number read, one-shot T/RH measurement at all three repeatabilities, all six heater pulses, soft-reset abort/recovery, and every documented address, against the independent model. That model implements behavior the datasheet states for the SHT4x without part qualification, recorded as `SHT4X-FAMILY-SCOPE-001`; **no check has been executed against any physical part**, so coverage across the family rests on that documentary basis rather than on execution.
+> **Model conformance:** The unpublished host-only conformance check covers the driver's serial-number read, one-shot T/RH measurement at all three repeatabilities, all six heater pulses, soft-reset abort/recovery, and every documented address, against the independent model. That model implements behavior the datasheet states for the SHT4x without part qualification, recorded as `SHT4X-FAMILY-SCOPE-001`, plus a declared 10 ms serial guard adopted from Sensirion's current reference driver where the datasheet gives no duration; the guard is not a physical busy claim. **No check has been executed against any physical part**, so coverage across the family rests on that documentary basis rather than on execution.
 > **Physical evidence:** None. No reviewed physical-device evidence supports a physically observed or ph-hil-qualified claim.
 > Evidence and limitations apply only to named operations; publication does not imply hardware qualification.
 
@@ -53,8 +53,8 @@ See the [driver package README](crates/sht4x/README.md).
   establishes nothing about any of them.
 - Supported operations: implementation-tested serial-number read, one-shot T/RH
   measurement at high, medium, or low repeatability, all six long/short heater
-  pulses, and soft reset over abstract async I2C with the device-required
-  command delays
+  pulses, and soft reset over abstract async I2C with the documented
+  measurement/heater/reset waits and the conservative serial reference wait
 
 ## Evidence and limitations
 
@@ -93,9 +93,13 @@ comparison establishes, and what its execution coverage means, lives in
 
 ## Verification
 
-Install the required coverage frontend with `cargo install cargo-llvm-cov --locked`;
-the pinned toolchain supplies its `llvm-tools-preview` component.
-Run `cargo xtask ci`. This local gate is authoritative; no hosted workflow is assumed.
+The pinned toolchain installs its required components and all five verified
+targets. Install the pinned Cargo tools with
+`cargo install cargo-llvm-cov --version 0.8.7 --locked` and
+`cargo install cargo-deny --version 0.20.2 --locked`, then run
+`cargo xtask ci`. This complete local gate is authoritative. The bounded hosted
+`ci` workflow runs the same gate for contributor feedback only after the
+repository becomes public.
 
 It checks formatting, the declared version and publication lock across all three
 lifecycle-controlled manifests, lints with warnings denied, tests in both the
@@ -110,16 +114,18 @@ The gate writes machine-readable summaries to `target/coverage/unit.json` and
 `target/coverage/summary.txt`. The first JSON measures driver and independent-
 model code exercised by their unit tests; the second measures those production
 implementations when the host-only conformance suite runs and is the
-completeness figure to cite for host-only evidence. A missing coverage
-tool, failed coverage test, or empty report fails the gate. Coverage percentages
-are reported in the gate summary and in `summary.txt`; they are not thresholds,
-and they create no device, silicon, or physical-evidence claim. How to read
-them is under [Evidence and limitations](#evidence-and-limitations).
+completeness figure to cite for host-only evidence. Instrumented build artifacts
+are cleared before each layer so consecutive gate runs cannot merge their
+denominators. A missing coverage tool, failed coverage test, or empty report
+fails the gate. Coverage percentages are reported in the gate summary and in
+`summary.txt`; they are not thresholds, and they create no device, silicon, or
+physical-evidence claim. How to read them is under
+[Evidence and limitations](#evidence-and-limitations).
 
-When the gate finishes — pass or fail — it prints a summary of every check
-(`passed`, `skipped`, `indeterminate`, or `failed`), the recorded coverage
-metrics, and an overall result. Paste that summary into a pull request. A
-`skipped` or `indeterminate` line is not a passed check.
+When the gate finishes, it prints a summary of every check (`passed`, `skipped`,
+`indeterminate`, or `failed`), the recorded coverage metrics, and an overall
+result. Paste that summary into a pull request. A skipped or indeterminate check
+makes the run incomplete and the command exits unsuccessfully.
 
 The gate runs over uncommitted work. When the tree is dirty — or when its state
 cannot be read, because cargo inspects the repository without the git CLI — the

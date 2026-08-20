@@ -43,6 +43,17 @@ create evidence. Neither authorizes a hardware-support claim.
   impact is uncertain, take the larger defensible bump.
 - All three lifecycle-controlled manifests move together; the gate enforces it.
 
+## Gate for an Incubating prerelease
+
+An Incubating crates.io prerelease requires truthful package documentation and
+reproducible software evidence while retaining the full `-incubating.N` version
+and Incubating lifecycle disclosure. The canonical gate must complete with zero
+skipped or indeterminate checks.
+
+Physical observation and hardware qualification are not prerequisites. Their
+absence remains explicit in the packaged warning and limits only physical or
+qualification claims.
+
 ## Gate for an ordinary release
 
 Before publishing a version with no prerelease component, all of the following
@@ -93,6 +104,14 @@ verified.
 
 Run from a clean checkout of the commit to be released.
 
+**0. Complete the public-distribution preflight.** Before the first public
+publication, confirm that the repository is public, its unauthenticated source,
+contract, issue, security, and license links resolve, the required Lifecycle and
+Domain properties are set, and the bounded hosted `ci` workflow is available.
+Recheck that the crate name is available and that registry credentials and
+ownership are ready. These are administrative release facts; none creates or
+requires physical evidence.
+
 **1. Settle the changelog.** Move accumulated `## Unreleased` entries under a
 `## X.Y.Z - YYYY-MM-DD` heading, dated in UTC. The section is a caller-facing
 record, not a development diary. Preserve unresolved known limitations; do not
@@ -109,11 +128,13 @@ and what it costs. A list of APIs is not a value statement.
 packages stay unpublished.
 
 The gate asserts `publish = false` in each lifecycle package whose
-`require_unpublished` policy is true in `xtask/ci.ron`, so this step must also
-set that field to false for the driver entry in the same commit. The model and
-conformance entries remain true. That is deliberate: the gate is meant to fail
-while the manifests and intended distribution state disagree, so unlocking
-publication requires an explicit policy edit rather than happening quietly.
+`require_unpublished` policy is true in `xtask/ci.ron`, and asserts the exact
+`publish = ["crates-io"]` allow-list when that policy is false. This step must
+therefore set the driver entry to false in the same commit. The model and
+conformance entries remain true. The gate is meant to fail while the manifests
+and intended distribution state disagree, so unlocking publication requires an
+explicit policy edit rather than happening quietly or permitting another
+registry.
 
 **4. Bring the status disclosures up to the state you just created.** This comes
 *after* the version and publication edits, not before: the root README and the
@@ -141,14 +162,18 @@ package checks fall back to the working tree when it is dirty and say so, and
 **6. Verify.**
 
 ```sh
+git rev-parse HEAD
 cargo xtask ci
 ```
 
-Record the toolchain, host, and any skipped or indeterminate check. Neither is a
-passed check. Retain the printed `ci summary`, including the line, function, and
-region totals (and `target/coverage/summary.txt`); they measure software
-execution only and create no physical evidence. On a clean tree the package
-checks print no notice; a notice here means step 5 was not finished.
+Record the first command's output as `<verified-commit>` immediately before
+running the gate, along with the toolchain and host. Do not change HEAD after
+this point; if it changes, restart at step 5. The gate exits unsuccessfully if
+any check is skipped or indeterminate; only `result passed` with zero of both
+is release evidence. Retain the printed `ci summary`, including the line,
+function, and region totals (and `target/coverage/summary.txt`); they measure
+software execution only and create no physical evidence. On a clean tree the
+package checks print no notice; a notice here means step 5 was not finished.
 
 **7. Inspect the artifact.**
 
@@ -158,17 +183,31 @@ cargo package --locked --manifest-path crates/sht4x/Cargo.toml --list
 
 Confirm the packaged set contains the licence, README, and sources, and no
 vendor material. The vendor datasheet is never committed and never packaged.
+Record the generated `.crate` file's SHA-256 and carry that value into the
+release record. Use `sha256sum` or PowerShell `Get-FileHash -Algorithm SHA256`
+against the exact archive under `target/package`.
 
-**8. Tag the verified commit.** Name the commit explicitly rather than relying on
-`HEAD`, so the tag cannot land on a different object than the one just verified.
-The tag is the full SemVer with a leading `v` and nothing else:
+**8. Tag the verified commit.** Use the `<verified-commit>` recorded immediately
+before the gate. Immediately before tagging, assert that HEAD still equals that
+value and the worktree remains clean. Name the commit explicitly rather than
+relying on `HEAD`. The tag is the full SemVer with a leading `v` and nothing
+else; replace the placeholders below with the manifest version and verified
+commit:
 
 ```sh
-git tag -a v0.1.0-incubating.2 <verified-commit> -m 'ph-sht4x-hts 0.1.0-incubating.2'
-git push origin v0.1.0-incubating.2
+git tag -a v<version> <verified-commit> -m 'ph-sht4x-hts <version>'
+git push origin v<version>
 ```
 
+Verify that dereferencing `v<version>` resolves to `<verified-commit>` before
+publication.
+
 **9. Publish.**
+
+Immediately before publishing, reassert the clean worktree, HEAD, and tag
+identity, rerun package construction, and confirm that the archive SHA-256 is
+unchanged. `cargo publish` repackages the current checkout, so these checks bind
+that checkout to the artifact and tag that were reviewed.
 
 ```sh
 cargo publish --locked --manifest-path crates/sht4x/Cargo.toml
@@ -180,7 +219,7 @@ tagged version discloses how complete its host-only evidence was. The
 model-conformance totals are the relevant completeness figure; unit-test totals
 are a different layer. **Mark it as a prerelease whenever the version has a
 prerelease component.** The tag and the packaged version must match exactly
-apart from the leading `v`.
+apart from the leading `v`. Include the recorded `.crate` SHA-256.
 
 **11. Reopen `Unreleased`** in `CHANGELOG.md`.
 

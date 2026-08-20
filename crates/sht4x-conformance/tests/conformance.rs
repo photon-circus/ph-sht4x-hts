@@ -2,11 +2,9 @@ use embedded_hal::i2c::{ErrorType, Operation, SevenBitAddress};
 use embedded_hal_async::{delay::DelayNs, i2c::I2c};
 use futures_lite::future::block_on;
 use ph_sht4x_hts::{
-    Address, Error as DriverError, HeaterDuration, HeaterPower, Measurement, Sht4x,
+    Address, Error as DriverError, HeaterDuration, HeaterPower, Measurement, Repeatability, Sht4x,
 };
-use ph_sht4x_hts_model::{
-    Error as ModelError, MEASURE_HIGH_COMMAND, SERIAL_NUMBER_COMMAND, Sht4xModel,
-};
+use ph_sht4x_hts_model::{Error as ModelError, Sht4xModel};
 use std::{cell::RefCell, rc::Rc, vec::Vec};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -55,14 +53,12 @@ struct ModelDelay {
 
 impl ModelI2c {
     fn new(serial: u32) -> (Self, ModelDelay, SharedEvents) {
-        Self::at(Address::A, serial)
+        Self::at(0x44, serial)
     }
 
-    fn at(address: Address, serial: u32) -> (Self, ModelDelay, SharedEvents) {
+    fn at(address: u8, serial: u32) -> (Self, ModelDelay, SharedEvents) {
         Self::with_model(
-            // `Address` cannot name an undocumented value, so a failure here
-            // would be a defect in this harness, not an unsupported input.
-            Sht4xModel::at(address.bits(), serial).expect("Address is always documented"),
+            Sht4xModel::at(address, serial).expect("test address is documented independently"),
         )
     }
 
@@ -72,8 +68,8 @@ impl ModelI2c {
         humidity: u16,
     ) -> (Self, ModelDelay, SharedEvents) {
         Self::with_model(
-            Sht4xModel::at(Address::A.bits(), serial)
-                .expect("Address is always documented")
+            Sht4xModel::at(0x44, serial)
+                .expect("literal default address is documented independently")
                 .with_measurement_ticks(temperature, humidity),
         )
     }
@@ -166,12 +162,12 @@ fn public_serial_read_conforms_to_the_model_frame() {
         *events.borrow(),
         [
             AdapterEvent::Write {
-                address: Address::A.bits(),
-                bytes: vec![SERIAL_NUMBER_COMMAND],
+                address: 0x44,
+                bytes: vec![0x89],
             },
-            AdapterEvent::DelayNs(10_000),
+            AdapterEvent::DelayNs(10_000_000),
             AdapterEvent::Read {
-                address: Address::A.bits(),
+                address: 0x44,
                 length: 6,
             },
         ]
@@ -200,13 +196,10 @@ fn public_serial_read_rejects_a_corrupted_crc_on_either_word() {
 fn adapter_rejects_a_transaction_the_model_domain_does_not_cover() {
     let (mut i2c, _delay, _events) = ModelI2c::new(0xbeef_beef);
     let mut response = [0; 6];
-    let mut operations = [
-        Operation::Write(&[SERIAL_NUMBER_COMMAND]),
-        Operation::Read(&mut response),
-    ];
+    let mut operations = [Operation::Write(&[0x89]), Operation::Read(&mut response)];
 
     assert_eq!(
-        block_on(i2c.transaction(Address::A.bits(), &mut operations)),
+        block_on(i2c.transaction(0x44, &mut operations)),
         Err(AdapterError::UnexpectedOperation)
     );
 }
@@ -225,6 +218,7 @@ fn adapter_distinguishes_device_behavior_from_model_limitations() {
     );
     for limitation in [
         ModelError::ReadBeforeCommand,
+        ModelError::SerialReadBeforeReferenceWait,
         ModelError::WriteWhileBusy,
         ModelError::MeasurementDataUnavailable,
     ] {
@@ -241,23 +235,54 @@ fn adapter_distinguishes_device_behavior_from_model_limitations() {
 /// through the driver's public error path.
 #[test]
 fn public_operations_conform_at_every_documented_address() {
-    for address in [Address::A, Address::B, Address::C] {
-        let (i2c, delay, events) = ModelI2c::at(address, 0x1234_5678);
-        let mut sensor = Sht4x::new(address, i2c, delay);
+    for (driver_address, literal_address) in
+        [(Address::A, 0x44), (Address::B, 0x45), (Address::C, 0x46)]
+    {
+        let model = Sht4xModel::at(literal_address, 0x1234_5678)
+            .expect("literal address is documented independently")
+            .with_measurement_ticks(0xbeef, 0xbeef);
+        let (i2c, delay, events) = ModelI2c::with_model(model);
+        let mut sensor = Sht4x::new(driver_address, i2c, delay);
 
         assert_eq!(block_on(sensor.read_serial_number()), Ok(0x1234_5678));
+        assert!(block_on(sensor.measure(Repeatability::Medium)).is_ok());
+        assert!(block_on(sensor.heater_pulse(HeaterPower::Low, HeaterDuration::Short)).is_ok());
+        assert_eq!(block_on(sensor.reset()), Ok(()));
         assert_eq!(
             *events.borrow(),
             [
                 AdapterEvent::Write {
-                    address: address.bits(),
-                    bytes: vec![SERIAL_NUMBER_COMMAND],
+                    address: literal_address,
+                    bytes: vec![0x89],
                 },
-                AdapterEvent::DelayNs(10_000),
+                AdapterEvent::DelayNs(10_000_000),
                 AdapterEvent::Read {
-                    address: address.bits(),
+                    address: literal_address,
                     length: 6,
                 },
+                AdapterEvent::Write {
+                    address: literal_address,
+                    bytes: vec![0xf6],
+                },
+                AdapterEvent::DelayNs(4_500_000),
+                AdapterEvent::Read {
+                    address: literal_address,
+                    length: 6,
+                },
+                AdapterEvent::Write {
+                    address: literal_address,
+                    bytes: vec![0x15],
+                },
+                AdapterEvent::DelayNs(110_000_000),
+                AdapterEvent::Read {
+                    address: literal_address,
+                    length: 6,
+                },
+                AdapterEvent::Write {
+                    address: literal_address,
+                    bytes: vec![0x94],
+                },
+                AdapterEvent::DelayNs(1_000_000),
             ]
         );
     }
@@ -267,15 +292,15 @@ fn public_operations_conform_at_every_documented_address() {
 fn a_driver_addressing_the_wrong_device_is_visible_through_its_public_error() {
     // Build the model for one address and the driver for another. Nothing else
     // differs, so this fails only if the driver's address reaches the bus.
-    let (i2c, delay, _events) = ModelI2c::at(Address::B, 0x1234_5678);
+    let (i2c, delay, _events) = ModelI2c::at(0x45, 0x1234_5678);
     let mut sensor = Sht4x::new(Address::A, i2c, delay);
 
     assert_eq!(
         block_on(sensor.read_serial_number()),
         Err(DriverError::I2c(AdapterError::Model(
             ModelError::WrongAddress {
-                expected: Address::B.bits(),
-                actual: Address::A.bits(),
+                expected: 0x45,
+                actual: 0x44,
             }
         )))
     );
@@ -291,8 +316,8 @@ fn a_driver_addressing_the_wrong_device_is_visible_through_its_public_error() {
 fn driver_and_model_crc_agree_across_every_word() {
     for word in 0..=u16::MAX {
         let serial = (u32::from(word) << 16) | u32::from(word);
-        let (i2c, _delay, _events) = ModelI2c::new(serial);
-        let mut sensor = Sht4x::new(Address::A, i2c, NoopDelay);
+        let (i2c, delay, _events) = ModelI2c::new(serial);
+        let mut sensor = Sht4x::new(Address::A, i2c, delay);
 
         assert_eq!(
             block_on(sensor.read_serial_number()),
@@ -300,6 +325,19 @@ fn driver_and_model_crc_agree_across_every_word() {
             "word {word:#06x}"
         );
     }
+}
+
+#[test]
+fn public_serial_read_requires_the_reference_wait_without_modeling_a_nack() {
+    let (i2c, _delay, _events) = ModelI2c::new(0x1234_5678);
+    let mut sensor = Sht4x::new(Address::A, i2c, NoopDelay);
+
+    assert_eq!(
+        block_on(sensor.read_serial_number()),
+        Err(DriverError::I2c(AdapterError::Model(
+            ModelError::SerialReadBeforeReferenceWait,
+        )))
+    );
 }
 
 #[test]
@@ -323,12 +361,12 @@ fn public_measure_conforms_at_each_repeatability_frontier() {
             *events.borrow(),
             [
                 AdapterEvent::Write {
-                    address: Address::A.bits(),
+                    address: 0x44,
                     bytes: vec![expected_command],
                 },
                 AdapterEvent::DelayNs(expected_delay_ns),
                 AdapterEvent::Read {
-                    address: Address::A.bits(),
+                    address: 0x44,
                     length: 6,
                 },
             ]
@@ -362,22 +400,22 @@ fn public_measure_requires_delay_to_reach_the_model_frontier() {
 #[test]
 fn public_heater_pulse_conforms_for_all_power_and_duration_selections() {
     for (power, duration, expected_command, expected_delay_ns) in [
-        (HeaterPower::High, HeaterDuration::Long, 0x39, 1_108_300_000),
+        (HeaterPower::High, HeaterDuration::Long, 0x39, 1_100_000_000),
         (
             HeaterPower::Medium,
             HeaterDuration::Long,
             0x2f,
-            1_108_300_000,
+            1_100_000_000,
         ),
-        (HeaterPower::Low, HeaterDuration::Long, 0x1e, 1_108_300_000),
-        (HeaterPower::High, HeaterDuration::Short, 0x32, 118_300_000),
+        (HeaterPower::Low, HeaterDuration::Long, 0x1e, 1_100_000_000),
+        (HeaterPower::High, HeaterDuration::Short, 0x32, 110_000_000),
         (
             HeaterPower::Medium,
             HeaterDuration::Short,
             0x24,
-            118_300_000,
+            110_000_000,
         ),
-        (HeaterPower::Low, HeaterDuration::Short, 0x15, 118_300_000),
+        (HeaterPower::Low, HeaterDuration::Short, 0x15, 110_000_000),
     ] {
         let (i2c, delay, events) = ModelI2c::with_measurement_ticks(0, 0xbeef, 0xbeef);
         let mut sensor = Sht4x::new(Address::A, i2c, delay);
@@ -393,12 +431,12 @@ fn public_heater_pulse_conforms_for_all_power_and_duration_selections() {
             *events.borrow(),
             [
                 AdapterEvent::Write {
-                    address: Address::A.bits(),
+                    address: 0x44,
                     bytes: vec![expected_command],
                 },
                 AdapterEvent::DelayNs(expected_delay_ns),
                 AdapterEvent::Read {
-                    address: Address::A.bits(),
+                    address: 0x44,
                     length: 6,
                 },
             ]
@@ -432,8 +470,8 @@ fn public_heater_pulse_requires_delay_to_reach_the_model_frontier() {
 #[test]
 fn public_reset_aborts_an_in_flight_measurement_and_preserves_serial() {
     let (mut i2c, delay, events) = ModelI2c::with_measurement_ticks(0x1234_5678, 0xbeef, 0xbeef);
-    let mut operations = [Operation::Write(&[MEASURE_HIGH_COMMAND])];
-    block_on(i2c.transaction(Address::A.bits(), &mut operations)).unwrap();
+    let mut operations = [Operation::Write(&[0xfd])];
+    block_on(i2c.transaction(0x44, &mut operations)).unwrap();
     events.borrow_mut().clear();
 
     let mut sensor = Sht4x::new(Address::A, i2c, delay);
@@ -442,8 +480,8 @@ fn public_reset_aborts_an_in_flight_measurement_and_preserves_serial() {
         *events.borrow(),
         [
             AdapterEvent::Write {
-                address: Address::A.bits(),
-                bytes: vec![ph_sht4x_hts_model::SOFT_RESET_COMMAND],
+                address: 0x44,
+                bytes: vec![0x94],
             },
             AdapterEvent::DelayNs(1_000_000),
         ]
@@ -454,12 +492,12 @@ fn public_reset_aborts_an_in_flight_measurement_and_preserves_serial() {
         &events.borrow()[2..],
         [
             AdapterEvent::Write {
-                address: Address::A.bits(),
-                bytes: vec![SERIAL_NUMBER_COMMAND],
+                address: 0x44,
+                bytes: vec![0x89],
             },
-            AdapterEvent::DelayNs(10_000),
+            AdapterEvent::DelayNs(10_000_000),
             AdapterEvent::Read {
-                address: Address::A.bits(),
+                address: 0x44,
                 length: 6,
             },
         ]
@@ -469,8 +507,8 @@ fn public_reset_aborts_an_in_flight_measurement_and_preserves_serial() {
 #[test]
 fn public_reset_without_delay_does_not_fake_idle_recovery() {
     let (mut i2c, _delay, _events) = ModelI2c::with_measurement_ticks(0x1234_5678, 0xbeef, 0xbeef);
-    let mut operations = [Operation::Write(&[MEASURE_HIGH_COMMAND])];
-    block_on(i2c.transaction(Address::A.bits(), &mut operations)).unwrap();
+    let mut operations = [Operation::Write(&[0xfd])];
+    block_on(i2c.transaction(0x44, &mut operations)).unwrap();
 
     let mut sensor = Sht4x::new(Address::A, i2c, NoopDelay);
     assert_eq!(block_on(sensor.reset()), Ok(()));
@@ -486,7 +524,7 @@ fn public_reset_without_delay_does_not_fake_idle_recovery() {
 fn public_reset_aborts_an_in_flight_heater_pulse_and_preserves_serial() {
     let (mut i2c, delay, events) = ModelI2c::with_measurement_ticks(0x1234_5678, 0xbeef, 0xbeef);
     let mut operations = [Operation::Write(&[0x39])];
-    block_on(i2c.transaction(Address::A.bits(), &mut operations)).unwrap();
+    block_on(i2c.transaction(0x44, &mut operations)).unwrap();
     events.borrow_mut().clear();
 
     let mut sensor = Sht4x::new(Address::A, i2c, delay);
@@ -495,8 +533,8 @@ fn public_reset_aborts_an_in_flight_heater_pulse_and_preserves_serial() {
         *events.borrow(),
         [
             AdapterEvent::Write {
-                address: Address::A.bits(),
-                bytes: vec![ph_sht4x_hts_model::SOFT_RESET_COMMAND],
+                address: 0x44,
+                bytes: vec![0x94],
             },
             AdapterEvent::DelayNs(1_000_000),
         ]
@@ -507,12 +545,12 @@ fn public_reset_aborts_an_in_flight_heater_pulse_and_preserves_serial() {
         &events.borrow()[2..],
         [
             AdapterEvent::Write {
-                address: Address::A.bits(),
-                bytes: vec![SERIAL_NUMBER_COMMAND],
+                address: 0x44,
+                bytes: vec![0x89],
             },
-            AdapterEvent::DelayNs(10_000),
+            AdapterEvent::DelayNs(10_000_000),
             AdapterEvent::Read {
-                address: Address::A.bits(),
+                address: 0x44,
                 length: 6,
             },
         ]

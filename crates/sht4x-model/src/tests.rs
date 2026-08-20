@@ -1,13 +1,25 @@
 extern crate std;
 use super::*;
 
+fn advance_serial_reference_wait(model: &mut Sht4xModel) {
+    // Literal oracle for `SHT4X-SN-WAIT-001`; do not derive this from the
+    // implementation constant whose correctness these tests exercise.
+    model.advance_ns(10_000_000);
+}
+
 #[test]
-fn models_the_required_serial_trace() {
+fn models_the_serial_reference_wait_as_a_limitation_then_returns_the_frame() {
     let mut model = Sht4xModel::new(0xbeef_beef);
     let mut response = [0; 6];
     model
         .write(DEFAULT_ADDRESS, &[SERIAL_NUMBER_COMMAND])
         .unwrap();
+    model.advance_ns(9_999_999);
+    assert_eq!(
+        model.read(DEFAULT_ADDRESS, &mut response),
+        Err(Error::SerialReadBeforeReferenceWait)
+    );
+    model.advance_ns(1);
     model.read(DEFAULT_ADDRESS, &mut response).unwrap();
     assert_eq!(response, [0xbe, 0xef, 0x92, 0xbe, 0xef, 0x92]);
 }
@@ -47,15 +59,14 @@ fn models_medium_and_low_measurement_frontiers() {
 
 #[test]
 fn models_all_heater_frontiers_and_frame() {
-    for (command, duration_ns) in HEATER_LONG_COMMANDS
-        .into_iter()
-        .map(|command| (command, LONG_HEATER_NS))
-        .chain(
-            HEATER_SHORT_COMMANDS
-                .into_iter()
-                .map(|command| (command, SHORT_HEATER_NS)),
-        )
-    {
+    for (command, duration_ns) in [
+        (0x39, 1_100_000_000),
+        (0x2f, 1_100_000_000),
+        (0x1e, 1_100_000_000),
+        (0x32, 110_000_000),
+        (0x24, 110_000_000),
+        (0x15, 110_000_000),
+    ] {
         let mut model = Sht4xModel::new(0).with_measurement_ticks(0xbeef, 0xbeef);
         let mut response = [0; 6];
 
@@ -143,6 +154,7 @@ fn aborts_measurement_with_soft_reset_and_returns_to_idle() {
     model
         .write(DEFAULT_ADDRESS, &[SERIAL_NUMBER_COMMAND])
         .unwrap();
+    advance_serial_reference_wait(&mut model);
     model.read(DEFAULT_ADDRESS, &mut response).unwrap();
     assert_eq!(response, [0x12, 0x34, 0x37, 0x56, 0x78, 0x7d]);
 }
@@ -168,6 +180,7 @@ fn aborts_heater_with_soft_reset_and_preserves_serial() {
     model
         .write(DEFAULT_ADDRESS, &[SERIAL_NUMBER_COMMAND])
         .unwrap();
+    advance_serial_reference_wait(&mut model);
     model.read(DEFAULT_ADDRESS, &mut response).unwrap();
     assert_eq!(response, [0x12, 0x34, 0x37, 0x56, 0x78, 0x7d]);
 }
@@ -241,6 +254,7 @@ fn reset_accumulates_split_delay_and_works_when_idle() {
     model
         .write(DEFAULT_ADDRESS, &[SERIAL_NUMBER_COMMAND])
         .unwrap();
+    advance_serial_reference_wait(&mut model);
     model.read(DEFAULT_ADDRESS, &mut response).unwrap();
     assert_eq!(response, [0x12, 0x34, 0x37, 0x56, 0x78, 0x7d]);
 }
@@ -259,6 +273,7 @@ fn rejects_a_write_that_would_discard_a_pending_serial_response() {
     );
 
     // The rejected write commits nothing: the serial frame is still there.
+    advance_serial_reference_wait(&mut model);
     model.read(DEFAULT_ADDRESS, &mut response).unwrap();
     assert_eq!(response, [0x12, 0x34, 0x37, 0x56, 0x78, 0x7d]);
 }
@@ -299,7 +314,7 @@ fn rejects_a_write_that_would_discard_ready_heater_data() {
     model
         .write(DEFAULT_ADDRESS, &[HEATER_SHORT_COMMANDS[0]])
         .unwrap();
-    model.advance_ns(SHORT_HEATER_NS);
+    model.advance_ns(110_000_000);
     assert_eq!(
         model.write(DEFAULT_ADDRESS, &[SERIAL_NUMBER_COMMAND]),
         Err(Error::WriteWithPendingResponse)
@@ -339,6 +354,7 @@ fn a_completed_reset_leaves_no_response_to_discard() {
     model
         .write(DEFAULT_ADDRESS, &[SERIAL_NUMBER_COMMAND])
         .unwrap();
+    advance_serial_reference_wait(&mut model);
     model.read(DEFAULT_ADDRESS, &mut response).unwrap();
     assert_eq!(response, [0x12, 0x34, 0x37, 0x56, 0x78, 0x7d]);
 }
@@ -389,6 +405,7 @@ fn a_frame_the_device_would_not_act_on_keeps_its_own_error() {
         assert_eq!(model.write(DEFAULT_ADDRESS, bytes), Err(expected));
 
         // And the response it could not have discarded is still there.
+        advance_serial_reference_wait(&mut model);
         model.read(DEFAULT_ADDRESS, &mut response).unwrap();
         assert_eq!(response, [0x12, 0x34, 0x37, 0x56, 0x78, 0x7d]);
     }
@@ -409,6 +426,7 @@ fn missing_ticks_are_reported_over_a_pending_response() {
         Err(Error::MissingMeasurementTicks)
     );
 
+    advance_serial_reference_wait(&mut model);
     model.read(DEFAULT_ADDRESS, &mut response).unwrap();
     assert_eq!(response, [0x12, 0x34, 0x37, 0x56, 0x78, 0x7d]);
 }
@@ -431,10 +449,12 @@ fn serial_read_is_stable_after_another_command() {
     model
         .write(DEFAULT_ADDRESS, &[SERIAL_NUMBER_COMMAND])
         .unwrap();
+    advance_serial_reference_wait(&mut model);
     model.read(DEFAULT_ADDRESS, &mut first).unwrap();
     model
         .write(DEFAULT_ADDRESS, &[SERIAL_NUMBER_COMMAND])
         .unwrap();
+    advance_serial_reference_wait(&mut model);
     model.read(DEFAULT_ADDRESS, &mut second).unwrap();
     assert_eq!(first, second);
 }
@@ -446,6 +466,7 @@ fn owns_the_crc_vector() {
     model
         .write(DEFAULT_ADDRESS, &[SERIAL_NUMBER_COMMAND])
         .unwrap();
+    advance_serial_reference_wait(&mut model);
     model.read(DEFAULT_ADDRESS, &mut response).unwrap();
     assert_eq!(response[2], 0x92);
 }
@@ -477,6 +498,7 @@ fn answers_on_whichever_documented_address_it_was_given() {
         let mut response = [0; 6];
 
         model.write(address, &[SERIAL_NUMBER_COMMAND]).unwrap();
+        advance_serial_reference_wait(&mut model);
         model.read(address, &mut response).unwrap();
         assert_eq!(response, [0xbe, 0xef, 0x92, 0xbe, 0xef, 0x92]);
 
