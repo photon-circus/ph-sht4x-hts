@@ -20,7 +20,9 @@ Incubating unpublished async no_std Rust driver for the Sensirion SHT45 humidity
 
 This repository owns truthful supported SHT45 operations on one device through an abstract async I2C bus.
 
-It does not own board topology; concrete bus/GPIO/power resources; sampling cadence; retry/escalation policy; heater application or duty-cycle policy; SHT40/41/43 family claims; model conformance beyond the explicitly named host-only serial-number, T/RH, heater-pulse, and soft-reset checks; or physical qualification.
+It does not own board topology; concrete bus/GPIO/power resources; sampling cadence; retry/escalation policy; heater application or duty-cycle policy; retrieval or application of the SHT43's ISO/IEC 17025 three-point calibration data; model conformance beyond the explicitly named host-only serial-number, T/RH, heater-pulse, and soft-reset checks; or physical qualification.
+
+The supported device is currently the SHT45-AD1B alone. Widening the set to the SHT40, SHT41, SHT43, and SHT45 is recorded as decision work in [the contract](docs/CONTRACT.md); until its propositions are retained, family support is not claimed.
 
 ## Supported scope
 

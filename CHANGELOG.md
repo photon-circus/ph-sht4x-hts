@@ -207,6 +207,30 @@
   a support claim, so the name is not read as covering devices the status
   disclosures do not name.
 
+### Added
+
+- Retained `SHT4X-SHT43-CAL-001`, recording the SHT43's individual ISO/IEC
+  17025:2017 three-point calibration, its measurement uncertainties, and that
+  its certificates are downloaded per sensor from an external service keyed by
+  serial number. The proposition exists to bound a non-goal with provenance:
+  retrieving and applying that data is network and policy work outside this
+  repository, the driver applies no per-device correction, and because the
+  conversion is unchanged, omitting the certificate introduces no error the
+  driver could otherwise have corrected.
+
+### Documentation
+
+- Recorded how the supported set widens to the SHT4x family without rewriting
+  identifiers: a proposition whose referent widens receives a new `SHT4X-`
+  identifier and the `SHT45-` record it supersedes stays resolvable, so existing
+  citations keep working. Until a `SHT4X-` proposition exists for a behavior,
+  that behavior is retained for the SHT45-AD1B only, whatever the package is
+  named.
+- Recorded the outstanding datasheet reads the widening depends on, each naming
+  the dependent work it enables. None is a claim, a validation assignment, or a
+  release block.
+- Added the SHT43 calibration-data non-goal to the contract and the root README.
+
 ### Known issues
 
 - Model conformance covers every current public device operation; no operation

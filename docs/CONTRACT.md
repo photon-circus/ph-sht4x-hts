@@ -6,7 +6,9 @@ The repository owns truthful supported SHT45 operations on one device through an
 
 ## Non-goals
 
-The repository does not own board topology; concrete bus/GPIO/power resources; sampling cadence; retry/escalation policy; heater application policy; SHT40/41/43 family claims; model conformance beyond the explicitly named host-only serial-number, T/RH, heater-pulse, and soft-reset checks; or physical qualification.
+The repository does not own board topology; concrete bus/GPIO/power resources; sampling cadence; retry/escalation policy; heater application policy; retrieval or application of the SHT43's ISO/IEC 17025 three-point calibration data, per `SHT4X-SHT43-CAL-001`; model conformance beyond the explicitly named host-only serial-number, T/RH, heater-pulse, and soft-reset checks; or physical qualification.
+
+The supported device set is currently the SHT45-AD1B alone. Widening it to the SHT40, SHT41, SHT43, and SHT45 is recorded as decision work under "Widening to the SHT4x family"; until the corresponding propositions are retained, family support is not claimed.
 
 ## Initial invariants
 
@@ -17,6 +19,45 @@ The repository does not own board topology; concrete bus/GPIO/power resources; s
 Refine this list when implementation creates review-blocking invariants; do not inventory hypothetical behavior.
 
 ## Sources and device propositions
+
+### Widening to the SHT4x family
+
+The supported device set is being widened from the SHT45-AD1B alone to the
+SHT40, SHT41, SHT43, and SHT45. The propositions below were retained while the
+scope was one part, and their identifiers say so.
+
+Identifiers are not rewritten. Section 10.2 requires an identifier to name one
+stable referent, never to be reused or redefined, and to remain resolvable after
+it is superseded or split. A proposition whose referent widens from the
+SHT45-AD1B to the family is therefore a *different* proposition: it receives a
+new `SHT4X-` identifier, and the `SHT45-` record it supersedes stays here,
+marked superseded and still resolvable, so citations in merged commits, review
+threads, and agent notes keep resolving.
+
+A `SHT45-` proposition that is genuinely part-specific is not superseded at all.
+It stays as it is and gains a family sibling rather than a replacement.
+
+**Until a `SHT4X-` proposition exists for a behavior, that behavior is retained
+for the SHT45-AD1B only**, whatever the package is named. The package name
+carries the family identifier; the propositions carry the claims, and only they
+decide what is supported.
+
+### Outstanding reads for the widening
+
+This decision work bounds what the widening needs and names the dependent work
+it enables. Each item is a read of the already-pinned datasheet — no new source
+is required — and none is a claim until it is performed and recorded:
+
+| Needed | Enables | Status |
+| --- | --- | --- |
+| The per-part I2C addresses across SHT40, SHT41, SHT43, and SHT45, superseding `SHT45-I2C-ADDR-001` | A variant-selected address, replacing the fixed `0x44` | Not read |
+| Whether Table 8's command bytes are stated for the SHT4x family or per part | Family siblings for the serial, measurement, reset, and heater command propositions | Not read |
+| Whether Table 5's timing bounds are stated for the family or per part | Family siblings for the measurement, reset, and heater timing propositions | Not read |
+| Whether the section 4.6 conversion formulae are stated for the family | A family sibling for `SHT45-MEAS-CONV-001`, and whether conversion is variant-dependent at all | Not read |
+
+Missing evidence remains undefined and creates no claim. Nothing in this table
+is a validation assignment, and none of it blocks a release of the current,
+narrower supported set.
 
 Retained propositions are limited to facts consumed by the implemented driver
 operations or the independent model's soft-reset and heater-pulse behavior. They
@@ -150,6 +191,25 @@ this repository. Older SHT4x PDF revisions are not co-authority.
   limiting, and watt metering remain outside this repository; soft reset
   aborts heater activity through `SHT45-RST-ABORT-001`, and other writes while
   heater-busy remain outside model fidelity.
+
+- `SHT4X-SHT43-CAL-001` — Every SHT43 carries an individual three-point
+  calibration at −30 °C, 5 °C, and 70 °C, accredited to ISO/IEC 17025:2017 by
+  the Swiss Accreditation Service under SCS 0158. The expanded measurement
+  uncertainty (k = 2, 95 % confidence) is 0.40 °C at −30 °C and 0.20 °C at both
+  5 °C and 70 °C, under the shared-risk decision rule of JCGM 106:2012 section
+  8.2. Each sensor is identified by the serial number read with the command of
+  section 4.7, and its certificate and calibration data are downloaded per
+  sensor, or reel-wise, from `libellus.sensirion.com` (section 2.4, Table 3).
+  Evidence state: supported.
+  Local consequence: this is an out-of-band data product retrieved over a
+  network, not a device operation over I2C, so retrieving or applying it is
+  outside this repository — as system calibration and product-level accuracy
+  already are. The driver applies no per-device correction. What it does supply
+  is the identifying serial number, through the operation recorded by
+  `SHT45-SN-CMD-001`, which is the key the certificate is filed under.
+  Omitting the certificate introduces no error the driver could otherwise have
+  corrected: the certificate refines the stated accuracy of a reading, it does
+  not change how the reading is converted.
 
 Add the smallest permanent proposition and exact provenance only when current
 implementation, model, conformance, physical evidence, an approved
