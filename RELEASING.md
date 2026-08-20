@@ -52,6 +52,8 @@ must hold. Each is a fact about the repository, not an intention:
   evidence status.
 - Implementation-focused tests and supported-target compilation proportional to
   the driver.
+- Nonempty unit and model-conformance coverage reports from the required
+  `cargo-llvm-cov` tool. Their percentages are recorded, not thresholded.
 - A passing `cargo xtask ci`.
 - A changelog and this release process.
 - A verified packaged artifact, assembled by an intentional maintainer action.
@@ -143,8 +145,10 @@ cargo xtask ci
 ```
 
 Record the toolchain, host, and any skipped or indeterminate check. Neither is a
-passed check. On a clean tree the package checks print no notice; a notice here
-means step 5 was not finished.
+passed check. Also retain the line, function, and region summaries reported for
+`target/coverage/unit.json` and `target/coverage/conformance.json`; they measure
+software execution only and create no physical evidence. On a clean tree the
+package checks print no notice; a notice here means step 5 was not finished.
 
 **7. Inspect the artifact.**
 

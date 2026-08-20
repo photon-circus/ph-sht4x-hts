@@ -22,4 +22,17 @@
         "thumbv7em-none-eabihf",
         "thumbv6m-none-eabi",
     ],
+    coverage: (
+        unit_packages: [
+            "ph-sht4x-hts",
+            "ph-sht4x-hts-model",
+        ],
+        conformance: (
+            package: "ph-sht4x-hts-conformance",
+            test: "conformance",
+        ),
+        infrastructure_packages: ["xtask"],
+        ignored_filename_regex: "tests\\.rs$",
+        output_directory: "target/coverage",
+    ),
 )

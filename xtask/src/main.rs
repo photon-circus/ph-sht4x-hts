@@ -16,6 +16,7 @@ struct CiConfig {
     lifecycle_packages: Vec<LifecyclePackage>,
     driver: DriverPackage,
     supported_targets: Vec<String>,
+    coverage: CoverageConfig,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -30,6 +31,52 @@ struct LifecyclePackage {
 struct DriverPackage {
     package: String,
     manifest: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+struct CoverageConfig {
+    unit_packages: Vec<String>,
+    conformance: ConformanceCoverage,
+    infrastructure_packages: Vec<String>,
+    ignored_filename_regex: String,
+    output_directory: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+struct ConformanceCoverage {
+    package: String,
+    test: String,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+struct CoverageExport {
+    data: Vec<CoverageData>,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+struct CoverageData {
+    files: Vec<CoverageFile>,
+    totals: CoverageTotals,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+struct CoverageFile {
+    filename: String,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+struct CoverageTotals {
+    functions: CoverageMetric,
+    lines: CoverageMetric,
+    regions: CoverageMetric,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+struct CoverageMetric {
+    count: u64,
+    covered: u64,
 }
 
 fn main() {
@@ -88,6 +135,8 @@ fn run_ci() -> Result<(), String> {
         &workspace,
         ["test", "--locked", "--workspace", "--all-features"],
     )?;
+
+    run_coverage(&workspace, &config.coverage)?;
 
     println!("check: supported target compilation");
     let installed_targets = installed_targets(&workspace);
@@ -198,7 +247,7 @@ impl CiConfig {
     fn validate(&self) -> Result<(), String> {
         require_nonempty("expected_version", &self.expected_version)?;
         require_nonempty("driver.package", &self.driver.package)?;
-        validate_manifest_path("driver.manifest", &self.driver.manifest)?;
+        validate_workspace_path("driver.manifest", &self.driver.manifest)?;
 
         if self.lifecycle_packages.is_empty() {
             return Err("lifecycle_packages must not be empty".to_owned());
@@ -209,7 +258,7 @@ impl CiConfig {
 
         let mut manifests = HashSet::new();
         for package in &self.lifecycle_packages {
-            validate_manifest_path("lifecycle_packages[].manifest", &package.manifest)?;
+            validate_workspace_path("lifecycle_packages[].manifest", &package.manifest)?;
             if !manifests.insert(package.manifest.as_str()) {
                 return Err(format!(
                     "lifecycle package manifest `{}` is duplicated",
@@ -233,8 +282,66 @@ impl CiConfig {
             }
         }
 
+        self.coverage.validate(&self.driver.package)?;
+
         Ok(())
     }
+}
+
+impl CoverageConfig {
+    fn validate(&self, driver_package: &str) -> Result<(), String> {
+        if self.unit_packages.is_empty() {
+            return Err("coverage.unit_packages must not be empty".to_owned());
+        }
+        if self.infrastructure_packages.is_empty() {
+            return Err("coverage.infrastructure_packages must not be empty".to_owned());
+        }
+        require_nonempty("coverage.conformance.package", &self.conformance.package)?;
+        require_nonempty("coverage.conformance.test", &self.conformance.test)?;
+        require_nonempty(
+            "coverage.ignored_filename_regex",
+            &self.ignored_filename_regex,
+        )?;
+        validate_workspace_path("coverage.output_directory", &self.output_directory)?;
+
+        let unit_packages = unique_values("coverage.unit_packages", &self.unit_packages)?;
+        let infrastructure_packages = unique_values(
+            "coverage.infrastructure_packages",
+            &self.infrastructure_packages,
+        )?;
+
+        if !unit_packages.contains(driver_package) {
+            return Err(format!(
+                "coverage.unit_packages must include driver package `{driver_package}`"
+            ));
+        }
+        if unit_packages.contains(self.conformance.package.as_str()) {
+            return Err("coverage conformance package must not be a unit package".to_owned());
+        }
+        if infrastructure_packages.contains(self.conformance.package.as_str()) {
+            return Err(
+                "coverage conformance package must not be an infrastructure package".to_owned(),
+            );
+        }
+        if let Some(package) = unit_packages.intersection(&infrastructure_packages).next() {
+            return Err(format!(
+                "coverage package `{package}` cannot be both a unit and infrastructure package"
+            ));
+        }
+
+        Ok(())
+    }
+}
+
+fn unique_values<'a>(field: &str, values: &'a [String]) -> Result<HashSet<&'a str>, String> {
+    let mut unique = HashSet::new();
+    for value in values {
+        require_nonempty(&format!("{field}[]"), value)?;
+        if !unique.insert(value.as_str()) {
+            return Err(format!("{field} entry `{value}` is duplicated"));
+        }
+    }
+    Ok(unique)
 }
 
 fn require_nonempty(field: &str, value: &str) -> Result<(), String> {
@@ -245,7 +352,7 @@ fn require_nonempty(field: &str, value: &str) -> Result<(), String> {
     }
 }
 
-fn validate_manifest_path(field: &str, value: &str) -> Result<(), String> {
+fn validate_workspace_path(field: &str, value: &str) -> Result<(), String> {
     require_nonempty(field, value)?;
     let path = Path::new(value);
     if path.is_absolute()
@@ -363,6 +470,175 @@ fn value_without_comment(value: &str) -> &str {
     }
 
     value
+}
+
+fn run_coverage(workspace: &Path, config: &CoverageConfig) -> Result<(), String> {
+    if !executable_available("cargo-llvm-cov") {
+        return Err(
+            "cargo-llvm-cov is required for coverage; install it with `cargo install cargo-llvm-cov --locked`"
+                .to_owned(),
+        );
+    }
+
+    let output_directory = workspace.join(&config.output_directory);
+    fs::create_dir_all(&output_directory).map_err(|error| {
+        format!(
+            "could not create coverage output directory {}: {error}",
+            output_directory.display()
+        )
+    })?;
+
+    let unit_report = output_directory.join("unit.json");
+    println!("check: unit test coverage");
+    remove_stale_report(&unit_report)?;
+    run_cargo(workspace, unit_coverage_args(config, &unit_report))?;
+    print_coverage_summary(workspace, "unit tests", &unit_report)?;
+
+    let conformance_report = output_directory.join("conformance.json");
+    println!("check: model-conformance coverage");
+    remove_stale_report(&conformance_report)?;
+    run_cargo(
+        workspace,
+        conformance_coverage_args(config, &conformance_report),
+    )?;
+    print_coverage_summary(workspace, "model conformance", &conformance_report)?;
+
+    Ok(())
+}
+
+fn unit_coverage_args(config: &CoverageConfig, output: &Path) -> Vec<OsString> {
+    let mut args = vec![OsString::from("llvm-cov"), OsString::from("--locked")];
+    for package in &config.unit_packages {
+        args.push(OsString::from("--package"));
+        args.push(OsString::from(package));
+    }
+    args.extend([
+        OsString::from("--lib"),
+        OsString::from("--all-features"),
+        OsString::from("--json"),
+        OsString::from("--summary-only"),
+        OsString::from("--ignore-filename-regex"),
+        OsString::from(&config.ignored_filename_regex),
+        OsString::from("--output-path"),
+        output.as_os_str().to_owned(),
+    ]);
+    args
+}
+
+fn conformance_coverage_args(config: &CoverageConfig, output: &Path) -> Vec<OsString> {
+    let mut args = vec![
+        OsString::from("llvm-cov"),
+        OsString::from("--locked"),
+        OsString::from("--workspace"),
+    ];
+    for package in config
+        .unit_packages
+        .iter()
+        .chain(&config.infrastructure_packages)
+    {
+        args.push(OsString::from("--exclude-from-test"));
+        args.push(OsString::from(package));
+    }
+    for package in
+        std::iter::once(&config.conformance.package).chain(&config.infrastructure_packages)
+    {
+        args.push(OsString::from("--exclude-from-report"));
+        args.push(OsString::from(package));
+    }
+    args.extend([
+        OsString::from("--test"),
+        OsString::from(&config.conformance.test),
+        OsString::from("--all-features"),
+        OsString::from("--json"),
+        OsString::from("--summary-only"),
+        OsString::from("--ignore-filename-regex"),
+        OsString::from(&config.ignored_filename_regex),
+        OsString::from("--output-path"),
+        output.as_os_str().to_owned(),
+    ]);
+    args
+}
+
+fn remove_stale_report(path: &Path) -> Result<(), String> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!(
+            "could not remove stale coverage report {}: {error}",
+            path.display()
+        )),
+    }
+}
+
+fn print_coverage_summary(workspace: &Path, label: &str, path: &Path) -> Result<(), String> {
+    let contents = fs::read_to_string(path).map_err(|error| {
+        format!(
+            "could not read {label} coverage report {}: {error}",
+            path.display()
+        )
+    })?;
+    let summary = parse_coverage_summary(path, &contents)?;
+    let display_path = path.strip_prefix(workspace).unwrap_or(path);
+
+    println!(
+        "coverage: {label}: lines {}; functions {}; regions {}; report {}",
+        format_metric(&summary.totals.lines),
+        format_metric(&summary.totals.functions),
+        format_metric(&summary.totals.regions),
+        display_path.display()
+    );
+    Ok(())
+}
+
+fn parse_coverage_summary(path: &Path, contents: &str) -> Result<CoverageData, String> {
+    let mut export: CoverageExport = serde_json::from_str(contents).map_err(|error| {
+        format!(
+            "could not parse coverage report {}: {error}",
+            path.display()
+        )
+    })?;
+    if export.data.len() != 1 {
+        return Err(format!(
+            "coverage report {} must contain exactly one data set, found {}",
+            path.display(),
+            export.data.len()
+        ));
+    }
+    let summary = export.data.pop().expect("the length was checked above");
+    if summary.files.is_empty()
+        || summary
+            .files
+            .iter()
+            .any(|file| file.filename.trim().is_empty())
+        || summary.totals.lines.count == 0
+    {
+        return Err(format!(
+            "coverage report {} contains no measured production lines",
+            path.display()
+        ));
+    }
+    for (name, metric) in [
+        ("lines", &summary.totals.lines),
+        ("functions", &summary.totals.functions),
+        ("regions", &summary.totals.regions),
+    ] {
+        if metric.covered > metric.count {
+            return Err(format!(
+                "coverage report {} has {name} covered greater than total",
+                path.display()
+            ));
+        }
+    }
+    Ok(summary)
+}
+
+fn format_metric(metric: &CoverageMetric) -> String {
+    let percent = if metric.count == 0 {
+        0.0
+    } else {
+        metric.covered as f64 * 100.0 / metric.count as f64
+    };
+    format!("{}/{} ({percent:.2}%)", metric.covered, metric.count)
 }
 
 enum InstalledTargets {
@@ -565,6 +841,16 @@ publish = true
                 manifest: "crates/sht4x/Cargo.toml".to_owned(),
             },
             supported_targets: vec!["thumbv7em-none-eabihf".to_owned()],
+            coverage: CoverageConfig {
+                unit_packages: vec!["ph-sht4x-hts".to_owned(), "ph-sht4x-hts-model".to_owned()],
+                conformance: ConformanceCoverage {
+                    package: "ph-sht4x-hts-conformance".to_owned(),
+                    test: "conformance".to_owned(),
+                },
+                infrastructure_packages: vec!["xtask".to_owned()],
+                ignored_filename_regex: "tests\\.rs$".to_owned(),
+                output_directory: "target/coverage".to_owned(),
+            },
         }
     }
 
@@ -586,6 +872,18 @@ publish = true
             config.supported_targets,
             ["thumbv7em-none-eabihf", "thumbv6m-none-eabi"]
         );
+        assert_eq!(
+            config.coverage.unit_packages,
+            ["ph-sht4x-hts", "ph-sht4x-hts-model"]
+        );
+        assert_eq!(
+            config.coverage.conformance.package,
+            "ph-sht4x-hts-conformance"
+        );
+        assert_eq!(config.coverage.conformance.test, "conformance");
+        assert_eq!(config.coverage.infrastructure_packages, ["xtask"]);
+        assert_eq!(config.coverage.ignored_filename_regex, "tests\\.rs$");
+        assert_eq!(config.coverage.output_directory, "target/coverage");
     }
 
     #[test]
@@ -691,6 +989,185 @@ publish = true
                 .unwrap_err()
                 .contains("must appear in lifecycle_packages")
         );
+    }
+
+    #[test]
+    fn coverage_configuration_rejects_empty_duplicate_and_overlapping_roles() {
+        let mut config = valid_config();
+        config.coverage.unit_packages.clear();
+        assert!(
+            config
+                .validate()
+                .unwrap_err()
+                .contains("coverage.unit_packages must not be empty")
+        );
+
+        let mut config = valid_config();
+        config.coverage.infrastructure_packages.clear();
+        assert!(
+            config
+                .validate()
+                .unwrap_err()
+                .contains("coverage.infrastructure_packages must not be empty")
+        );
+
+        let mut config = valid_config();
+        config
+            .coverage
+            .unit_packages
+            .push("ph-sht4x-hts".to_owned());
+        assert!(config.validate().unwrap_err().contains("is duplicated"));
+
+        let mut config = valid_config();
+        config.coverage.unit_packages.remove(0);
+        assert!(
+            config
+                .validate()
+                .unwrap_err()
+                .contains("must include driver package")
+        );
+
+        let mut config = valid_config();
+        config.coverage.conformance.package = "ph-sht4x-hts".to_owned();
+        assert!(
+            config
+                .validate()
+                .unwrap_err()
+                .contains("must not be a unit package")
+        );
+
+        let mut config = valid_config();
+        config.coverage.infrastructure_packages = vec!["ph-sht4x-hts-model".to_owned()];
+        assert!(
+            config
+                .validate()
+                .unwrap_err()
+                .contains("both a unit and infrastructure package")
+        );
+
+        let mut config = valid_config();
+        config.coverage.output_directory = "../coverage".to_owned();
+        assert!(
+            config
+                .validate()
+                .unwrap_err()
+                .contains("workspace-relative path")
+        );
+
+        let mut config = valid_config();
+        config.coverage.ignored_filename_regex.clear();
+        assert!(
+            config
+                .validate()
+                .unwrap_err()
+                .contains("coverage.ignored_filename_regex")
+        );
+    }
+
+    #[test]
+    fn coverage_commands_keep_unit_and_conformance_execution_separate() {
+        let config = valid_config();
+        let unit = unit_coverage_args(&config.coverage, Path::new("unit.json"));
+        let unit = unit
+            .iter()
+            .map(|value| value.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            unit,
+            [
+                "llvm-cov",
+                "--locked",
+                "--package",
+                "ph-sht4x-hts",
+                "--package",
+                "ph-sht4x-hts-model",
+                "--lib",
+                "--all-features",
+                "--json",
+                "--summary-only",
+                "--ignore-filename-regex",
+                "tests\\.rs$",
+                "--output-path",
+                "unit.json",
+            ]
+        );
+
+        let conformance =
+            conformance_coverage_args(&config.coverage, Path::new("conformance.json"));
+        let conformance = conformance
+            .iter()
+            .map(|value| value.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            conformance,
+            [
+                "llvm-cov",
+                "--locked",
+                "--workspace",
+                "--exclude-from-test",
+                "ph-sht4x-hts",
+                "--exclude-from-test",
+                "ph-sht4x-hts-model",
+                "--exclude-from-test",
+                "xtask",
+                "--exclude-from-report",
+                "ph-sht4x-hts-conformance",
+                "--exclude-from-report",
+                "xtask",
+                "--test",
+                "conformance",
+                "--all-features",
+                "--json",
+                "--summary-only",
+                "--ignore-filename-regex",
+                "tests\\.rs$",
+                "--output-path",
+                "conformance.json",
+            ]
+        );
+    }
+
+    #[test]
+    fn stale_coverage_report_is_removed_before_a_run() {
+        let directory =
+            env::temp_dir().join(format!("ph-sht4x-hts-coverage-test-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let report = directory.join("stale.json");
+        fs::write(&report, "stale").unwrap();
+
+        remove_stale_report(&report).unwrap();
+        assert!(!report.exists());
+        remove_stale_report(&report).unwrap();
+
+        fs::remove_dir(&directory).unwrap();
+    }
+
+    #[test]
+    fn coverage_summary_parser_rejects_malformed_empty_and_zero_line_reports() {
+        let path = Path::new("coverage.json");
+        assert!(parse_coverage_summary(path, "not json").is_err());
+        assert!(parse_coverage_summary(path, r#"{"data":[]}"#).is_err());
+        assert!(
+            parse_coverage_summary(
+                path,
+                r#"{"data":[{"files":[{"filename":"driver.rs"}],"totals":{"functions":{"count":1,"covered":1},"lines":{"count":0,"covered":0},"regions":{"count":1,"covered":1}}}]}"#,
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn coverage_summary_parser_retains_measured_metrics() {
+        let summary = parse_coverage_summary(
+            Path::new("coverage.json"),
+            r#"{"data":[{"files":[{"filename":"driver.rs"}],"totals":{"functions":{"count":3,"covered":2},"lines":{"count":10,"covered":9},"regions":{"count":12,"covered":10}}}]}"#,
+        )
+        .unwrap();
+
+        assert_eq!(summary.files[0].filename, "driver.rs");
+        assert_eq!(summary.totals.lines.count, 10);
+        assert_eq!(summary.totals.lines.covered, 9);
+        assert_eq!(format_metric(&summary.totals.lines), "9/10 (90.00%)");
     }
 
     #[test]
