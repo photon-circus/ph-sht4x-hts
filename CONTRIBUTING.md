@@ -1,4 +1,4 @@
-# Contributing to ph-sht45-hts
+# Contributing to ph-sht4x-hts
 
 This guide controls over the
 [organization-wide fallback](https://github.com/photon-circus/.github/blob/main/CONTRIBUTING.md)

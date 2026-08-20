@@ -1,4 +1,4 @@
-# Releasing ph-sht45-hts
+# Releasing ph-sht4x-hts
 
 This is the release contract for this repository. It implements Repository
 Standards v0.1 section 17 and the Peripheral Driver Release and Evidence
@@ -110,9 +110,14 @@ to an unpackaged or private record does not satisfy this.
 
 **4. Unlock publication.** Replace `publish = false` with `publish =
 ["crates-io"]` in `crates/sht45/Cargo.toml` only. The model and conformance
-packages stay unpublished. Update the expected version in `scripts/ci.sh`, and
-its publication assertion for the driver manifest, in the same commit — the
-gate is meant to fail when the manifest and the intended state disagree.
+packages stay unpublished.
+
+The gate asserts `publish = false` in the `[package]` table of every manifest in
+one loop, so this step must also narrow that loop to exempt the driver manifest,
+and update `expected_version` — both in the same commit. That is deliberate: the
+gate is meant to fail while the manifests and the intended distribution state
+disagree, so unlocking publication is an explicit edit to the check that guards
+it rather than something a manifest change can do quietly.
 
 **5. Verify.**
 

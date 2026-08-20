@@ -2,7 +2,7 @@
 
 This policy controls over the
 [organization-wide fallback](https://github.com/photon-circus/.github/blob/main/SECURITY.md)
-for `ph-sht45-hts`.
+for `ph-sht4x-hts`.
 
 ## Reporting a vulnerability
 
