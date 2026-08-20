@@ -129,21 +129,23 @@ pub enum Repeatability {
 /// Heater power selected for one bounded heater pulse.
 ///
 /// Each variant selects one of the three heater commands available for the
-/// requested duration. Which documented power level each command carries is
-/// recorded as `SHT45-HEAT-PWR-001`, and that record is **unverified**: its
-/// figures have not been checked against the pinned datasheet. Read the variant
-/// names as the retained reading of that ordering, not as a confirmed device
-/// fact, and do not depend on a particular wattage.
+/// requested duration, per `SHT45-HEAT-PWR-001`.
+///
+/// The wattages below are the datasheet's **typical** values at **VDD = 3.3 V**.
+/// They are not a delivered or guaranteed figure: a typical value is not a
+/// bound, and the figures are qualified to that one supply voltage. Treat them
+/// as naming which documented level you selected, not as how much energy the
+/// device will dissipate.
 ///
 /// The driver selects the command byte. It does not meter delivered energy or
 /// limit duty cycle, which stay with the caller under `SHT45-HEAT-SEQ-001`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HeaterPower {
-    /// Command `0x39` when long, `0x32` when short; read as the highest level.
+    /// Highest level, typically 200 mW at 3.3 V: `0x39` when long, `0x32` when short.
     High,
-    /// Command `0x2F` when long, `0x24` when short; read as the middle level.
+    /// Middle level, typically 110 mW at 3.3 V: `0x2F` when long, `0x24` when short.
     Medium,
-    /// Command `0x1E` when long, `0x15` when short; read as the lowest level.
+    /// Lowest level, typically 20 mW at 3.3 V: `0x1E` when long, `0x15` when short.
     Low,
 }
 
