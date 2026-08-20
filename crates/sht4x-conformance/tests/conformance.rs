@@ -1,10 +1,10 @@
 use embedded_hal::i2c::{ErrorType, Operation, SevenBitAddress};
 use embedded_hal_async::{delay::DelayNs, i2c::I2c};
 use futures_lite::future::block_on;
-use ph_sht45_hts::{
+use ph_sht4x_hts::{
     ADDRESS, Error as DriverError, HeaterDuration, HeaterPower, Measurement, Sht45,
 };
-use ph_sht45_hts_model::{
+use ph_sht4x_hts_model::{
     Error as ModelError, MEASURE_HIGH_COMMAND, SERIAL_NUMBER_COMMAND, Sht45Model,
 };
 use std::{cell::RefCell, rc::Rc, vec::Vec};
@@ -245,16 +245,16 @@ fn driver_and_model_crc_agree_across_every_word() {
 #[test]
 fn public_measure_conforms_at_each_repeatability_frontier() {
     for (repeatability, expected_command, expected_delay_ns) in [
-        (ph_sht45_hts::Repeatability::High, 0xfd, 8_300_000),
-        (ph_sht45_hts::Repeatability::Medium, 0xf6, 4_500_000),
-        (ph_sht45_hts::Repeatability::Low, 0xe0, 1_600_000),
+        (ph_sht4x_hts::Repeatability::High, 0xfd, 8_300_000),
+        (ph_sht4x_hts::Repeatability::Medium, 0xf6, 4_500_000),
+        (ph_sht4x_hts::Repeatability::Low, 0xe0, 1_600_000),
     ] {
         let (i2c, delay, events) = ModelI2c::with_measurement_ticks(0, 0xbeef, 0xbeef);
         let mut sensor = Sht45::new(i2c, delay);
 
         assert_eq!(
             block_on(sensor.measure(repeatability)),
-            Ok(ph_sht45_hts::Measurement {
+            Ok(ph_sht4x_hts::Measurement {
                 t_mdeg_c: 85_523,
                 rh_milli_pct: 87_230,
             })
@@ -283,7 +283,7 @@ fn public_measure_rejects_an_adapter_corrupted_model_frame() {
     let mut sensor = Sht45::new(i2c, delay);
 
     assert!(matches!(
-        block_on(sensor.measure(ph_sht45_hts::Repeatability::High)),
+        block_on(sensor.measure(ph_sht4x_hts::Repeatability::High)),
         Err(DriverError::Crc { word: 0, .. })
     ));
 }
@@ -294,7 +294,7 @@ fn public_measure_requires_delay_to_reach_the_model_frontier() {
     let mut sensor = Sht45::new(i2c, NoopDelay);
 
     assert!(matches!(
-        block_on(sensor.measure(ph_sht45_hts::Repeatability::High)),
+        block_on(sensor.measure(ph_sht4x_hts::Repeatability::High)),
         Err(DriverError::NoAcknowledge(_))
     ));
 }
@@ -383,7 +383,7 @@ fn public_reset_aborts_an_in_flight_measurement_and_preserves_serial() {
         [
             AdapterEvent::Write {
                 address: ADDRESS,
-                bytes: vec![ph_sht45_hts_model::SOFT_RESET_COMMAND],
+                bytes: vec![ph_sht4x_hts_model::SOFT_RESET_COMMAND],
             },
             AdapterEvent::DelayNs(1_000_000),
         ]
@@ -436,7 +436,7 @@ fn public_reset_aborts_an_in_flight_heater_pulse_and_preserves_serial() {
         [
             AdapterEvent::Write {
                 address: ADDRESS,
-                bytes: vec![ph_sht45_hts_model::SOFT_RESET_COMMAND],
+                bytes: vec![ph_sht4x_hts_model::SOFT_RESET_COMMAND],
             },
             AdapterEvent::DelayNs(1_000_000),
         ]

@@ -2,8 +2,8 @@
 set -eu
 
 expected_version="0.1.0-incubating.1"
-driver_manifest="crates/sht45/Cargo.toml"
-manifests="crates/sht45/Cargo.toml crates/sht45-model/Cargo.toml crates/sht45-conformance/Cargo.toml"
+driver_manifest="crates/sht4x/Cargo.toml"
+manifests="crates/sht4x/Cargo.toml crates/sht4x-model/Cargo.toml crates/sht4x-conformance/Cargo.toml"
 # Supported bare-metal targets. A no_std driver compiled only for the host has
 # not been shown to compile for the targets it exists to serve.
 supported_targets="thumbv7em-none-eabihf thumbv6m-none-eabi"
@@ -63,7 +63,7 @@ for target in $supported_targets; do
     elif ! installed_targets="$(rustup target list --installed 2>/dev/null)"; then
         echo "indeterminate: target $target, the installed-target list could not be read"
     elif printf '%s\n' "$installed_targets" | grep -qx "$target"; then
-        cargo build --locked -p ph-sht45-hts --target "$target"
+        cargo build --locked -p ph-sht4x-hts --target "$target"
     else
         echo "skipped: target $target is not installed"
     fi

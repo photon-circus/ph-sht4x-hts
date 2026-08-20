@@ -1,4 +1,4 @@
-# ph-sht45-hts
+# ph-sht4x-hts
 
 Incubating unpublished async no_std Rust driver for the Sensirion SHT45 humidity and temperature sensor over abstract I2C.
 
@@ -8,6 +8,13 @@ Incubating unpublished async no_std Rust driver for the Sensirion SHT45 humidity
 > **Model conformance:** The unpublished host-only conformance check covers the driver's serial-number read, one-shot T/RH measurement at all three repeatabilities, all six heater pulses, and soft-reset abort/recovery.
 > **Physical evidence:** None. No reviewed physical-device evidence supports a physically observed or qualified claim.
 > Evidence and limitations apply only to named operations; publication does not imply hardware qualification.
+
+> [!NOTE]
+> The `sht4x` in this name is the family identifier from the organization naming
+> standard, chosen because the supported device set is being widened to the
+> SHT4x family. It is not itself a support claim: the status disclosure above and
+> the supported scope below state which devices this driver actually covers
+> today, and only those are covered.
 
 ## Responsibility and boundaries
 
@@ -36,7 +43,7 @@ It does not own board topology; concrete bus/GPIO/power resources; sampling cade
 The crate provides implementation-tested serial-number and one-shot T/RH reads,
 all six heater pulses, and soft reset for one SHT45-AD1B device. The driver owns
 each pulse's complete wait and read sequence; the caller owns application-level
-heater cadence and duty-cycle policy. See [the package README](crates/sht45/README.md).
+heater cadence and duty-cycle policy. See [the package README](crates/sht4x/README.md).
 
 A heater pulse converts while the heater is still on, so the reading it returns
 describes the heated sensor rather than one taken with the heater off. How the
@@ -50,7 +57,7 @@ Model conformance covers the host-only serial-number, T/RH measure, all six heat
 
 See [the repository contract](docs/CONTRACT.md) for the current responsibility, invariants, evidence posture, and source handling.
 
-The independent model package is documented in [its README](crates/sht45-model/README.md). It covers selected serial-number, one-shot T/RH, heater-pulse, and soft-reset-abort behavior; this model-only evidence does not establish driver conformance or silicon behavior.
+The independent model package is documented in [its README](crates/sht4x-model/README.md). It covers selected serial-number, one-shot T/RH, heater-pulse, and soft-reset-abort behavior; this model-only evidence does not establish driver conformance or silicon behavior.
 
 ## Verification
 

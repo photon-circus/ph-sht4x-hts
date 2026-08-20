@@ -1,4 +1,4 @@
-# ph-sht45-hts-conformance
+# ph-sht4x-hts-conformance
 
 Unpublished host-only conformance checks for public SHT45-AD1B operations.
 

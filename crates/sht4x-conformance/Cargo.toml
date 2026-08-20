@@ -1,5 +1,5 @@
 [package]
-name = "ph-sht45-hts-conformance"
+name = "ph-sht4x-hts-conformance"
 version = "0.1.0-incubating.1"
 edition.workspace = true
 license.workspace = true
@@ -20,5 +20,5 @@ publish = false
 embedded-hal = "1.0"
 embedded-hal-async = "1.0"
 futures-lite = "2"
-ph-sht45-hts = { path = "../sht45" }
-ph-sht45-hts-model = { path = "../sht45-model" }
+ph-sht4x-hts = { path = "../sht4x" }
+ph-sht4x-hts-model = { path = "../sht4x-model" }

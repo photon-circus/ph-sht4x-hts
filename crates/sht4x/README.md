@@ -1,4 +1,4 @@
-# ph-sht45-hts
+# ph-sht4x-hts
 
 Incubating unpublished async no_std Rust driver for the Sensirion SHT45 humidity and temperature sensor over abstract I2C.
 
@@ -8,6 +8,13 @@ Incubating unpublished async no_std Rust driver for the Sensirion SHT45 humidity
 > **Model conformance:** The unpublished host-only conformance check covers the driver's serial-number read, one-shot T/RH measurement at all three repeatabilities, all six heater pulses, and soft-reset abort/recovery.
 > **Physical evidence:** None. No reviewed physical-device evidence supports a physically observed or qualified claim.
 > Evidence and limitations apply only to named operations; publication does not imply hardware qualification.
+
+> [!NOTE]
+> The `sht4x` in this name is the family identifier from the organization naming
+> standard, chosen because the supported device set is being widened to the
+> SHT4x family. It is not itself a support claim: the status disclosure above and
+> the supported scope below state which devices this driver actually covers
+> today, and only those are covered.
 
 ## Availability
 

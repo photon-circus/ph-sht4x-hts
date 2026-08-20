@@ -103,7 +103,7 @@ value statement.
 --workspace` so `Cargo.lock` matches.
 
 **3. Unlock publication.** Replace `publish = false` with `publish =
-["crates-io"]` in `crates/sht45/Cargo.toml` only. The model and conformance
+["crates-io"]` in `crates/sht4x/Cargo.toml` only. The model and conformance
 packages stay unpublished.
 
 The gate asserts `publish = false` in the `[package]` table of every manifest in
@@ -149,7 +149,7 @@ means step 5 was not finished.
 **7. Inspect the artifact.**
 
 ```sh
-cargo package --locked --manifest-path crates/sht45/Cargo.toml --list
+cargo package --locked --manifest-path crates/sht4x/Cargo.toml --list
 ```
 
 Confirm the packaged set contains the licence, README, and sources, and no
@@ -160,14 +160,14 @@ vendor material. The vendor datasheet is never committed and never packaged.
 The tag is the full SemVer with a leading `v` and nothing else:
 
 ```sh
-git tag -a v0.1.0-incubating.2 <verified-commit> -m 'ph-sht45-hts 0.1.0-incubating.2'
+git tag -a v0.1.0-incubating.2 <verified-commit> -m 'ph-sht4x-hts 0.1.0-incubating.2'
 git push origin v0.1.0-incubating.2
 ```
 
 **9. Publish.**
 
 ```sh
-cargo publish --locked --manifest-path crates/sht45/Cargo.toml
+cargo publish --locked --manifest-path crates/sht4x/Cargo.toml
 ```
 
 **10. Create the GitHub Release** on that tag, containing the corresponding
