@@ -9,7 +9,7 @@ versions are permanent and cannot be overwritten.
 
 ## Current distribution state
 
-The workspace release candidate is `0.1.0-incubating.1`. The driver manifest
+The current published version is `0.1.0-incubating.1`. The driver manifest
 allows publication only to crates.io; the model and conformance manifests
 remain unpublished. The canonical gate asserts the version and that exact
 publication policy on every run, so accidental drift fails before it reaches a
