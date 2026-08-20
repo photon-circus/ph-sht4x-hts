@@ -5,8 +5,38 @@
 
 use embedded_hal_async::{delay::DelayNs, i2c::I2c};
 
-/// The fixed 7-bit address of the supported SHT45-AD1B device.
-pub const ADDRESS: u8 = 0x44;
+/// The 7-bit I2C address an SHT4x answers on.
+///
+/// Fixed by position 7 of the part number under `SHT4X-PART-NOM-001`, and
+/// recorded as `SHT4X-I2C-ADDR-001`. It is **not** a function of the sensor
+/// model: an SHT40 ships at all three addresses and an SHT43 at two, so read
+/// this off the part number you ordered rather than inferring it from whether
+/// the part is an SHT40, SHT41, SHT43, or SHT45.
+///
+/// The variants are named for the part-number position they correspond to, so
+/// the lookup is direct: `SHT40-BD1B-R2` has `B` at position 7 and therefore
+/// answers on [`Address::B`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Address {
+    /// Part-number position 7 `A`: 7-bit address `0x44`.
+    A,
+    /// Part-number position 7 `B`: 7-bit address `0x45`.
+    B,
+    /// Part-number position 7 `C`: 7-bit address `0x46`.
+    C,
+}
+
+impl Address {
+    /// The 7-bit address as it appears on the bus.
+    #[must_use]
+    pub const fn bits(self) -> u8 {
+        match self {
+            Self::A => 0x44,
+            Self::B => 0x45,
+            Self::C => 0x46,
+        }
+    }
+}
 
 const SERIAL_NUMBER_COMMAND: u8 = 0x89;
 const SERIAL_NUMBER_DURATION_US: u32 = 10;
@@ -99,21 +129,23 @@ pub enum Repeatability {
 /// Heater power selected for one bounded heater pulse.
 ///
 /// Each variant selects one of the three heater commands available for the
-/// requested duration. Which documented power level each command carries is
-/// recorded as `SHT45-HEAT-PWR-001`, and that record is **unverified**: its
-/// figures have not been checked against the pinned datasheet. Read the variant
-/// names as the retained reading of that ordering, not as a confirmed device
-/// fact, and do not depend on a particular wattage.
+/// requested duration, per `SHT45-HEAT-PWR-001`.
+///
+/// The wattages below are the datasheet's **typical** values at **VDD = 3.3 V**.
+/// They are not a delivered or guaranteed figure: a typical value is not a
+/// bound, and the figures are qualified to that one supply voltage. Treat them
+/// as naming which documented level you selected, not as how much energy the
+/// device will dissipate.
 ///
 /// The driver selects the command byte. It does not meter delivered energy or
 /// limit duty cycle, which stay with the caller under `SHT45-HEAT-SEQ-001`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HeaterPower {
-    /// Command `0x39` when long, `0x32` when short; read as the highest level.
+    /// Highest level, typically 200 mW at 3.3 V: `0x39` when long, `0x32` when short.
     High,
-    /// Command `0x2F` when long, `0x24` when short; read as the middle level.
+    /// Middle level, typically 110 mW at 3.3 V: `0x2F` when long, `0x24` when short.
     Medium,
-    /// Command `0x1E` when long, `0x15` when short; read as the lowest level.
+    /// Lowest level, typically 20 mW at 3.3 V: `0x1E` when long, `0x15` when short.
     Low,
 }
 
@@ -136,15 +168,30 @@ pub struct Measurement {
 }
 
 /// An SHT45 connected to abstract asynchronous I2C and delay resources.
-pub struct Sht45<I2C, DELAY> {
+pub struct Sht4x<I2C, DELAY> {
+    address: Address,
     i2c: I2C,
     delay: DELAY,
 }
 
-impl<I2C, DELAY> Sht45<I2C, DELAY> {
-    /// Create a driver for the SHT45-AD1B at address `0x44`.
-    pub const fn new(i2c: I2C, delay: DELAY) -> Self {
-        Self { i2c, delay }
+impl<I2C, DELAY> Sht4x<I2C, DELAY> {
+    /// Create a driver for one SHT4x at the given address.
+    ///
+    /// The address comes from position 7 of the part number, per
+    /// [`Address`]. Every operation on the returned driver addresses that one
+    /// device; nothing here scans the bus or infers which part is present.
+    pub const fn new(address: Address, i2c: I2C, delay: DELAY) -> Self {
+        Self {
+            address,
+            i2c,
+            delay,
+        }
+    }
+
+    /// The address this driver was constructed for.
+    #[must_use]
+    pub const fn address(&self) -> Address {
+        self.address
     }
 
     /// Read the device's 32-bit transmission-order serial number.
@@ -155,7 +202,7 @@ impl<I2C, DELAY> Sht45<I2C, DELAY> {
         E: embedded_hal::i2c::Error,
     {
         self.i2c
-            .write(ADDRESS, &[SERIAL_NUMBER_COMMAND])
+            .write(self.address.bits(), &[SERIAL_NUMBER_COMMAND])
             .await
             .map_err(map_i2c_error)?;
 
@@ -163,7 +210,7 @@ impl<I2C, DELAY> Sht45<I2C, DELAY> {
 
         let mut response = [0; RESPONSE_LEN];
         self.i2c
-            .read(ADDRESS, &mut response)
+            .read(self.address.bits(), &mut response)
             .await
             .map_err(map_i2c_error)?;
 
@@ -179,7 +226,7 @@ impl<I2C, DELAY> Sht45<I2C, DELAY> {
         E: embedded_hal::i2c::Error,
     {
         self.i2c
-            .write(ADDRESS, &[SOFT_RESET_COMMAND])
+            .write(self.address.bits(), &[SOFT_RESET_COMMAND])
             .await
             .map_err(map_i2c_error)?;
 
@@ -204,7 +251,7 @@ impl<I2C, DELAY> Sht45<I2C, DELAY> {
         };
 
         self.i2c
-            .write(ADDRESS, &[command])
+            .write(self.address.bits(), &[command])
             .await
             .map_err(map_i2c_error)?;
 
@@ -212,7 +259,7 @@ impl<I2C, DELAY> Sht45<I2C, DELAY> {
 
         let mut response = [0; RESPONSE_LEN];
         self.i2c
-            .read(ADDRESS, &mut response)
+            .read(self.address.bits(), &mut response)
             .await
             .map_err(map_i2c_error)?;
 
@@ -227,8 +274,8 @@ impl<I2C, DELAY> Sht45<I2C, DELAY> {
     /// on*, so the returned [`Measurement`] describes the heated sensor rather
     /// than the surrounding air. How the two differ is heater physics, which this
     /// repository does not retain, model, bound, or correct. It shares the
-    /// [`Measurement`] type with [`Sht45::measure`] and is not a substitute for
-    /// it: use [`Sht45::measure`] for a reading taken with the heater off. What
+    /// [`Measurement`] type with [`Sht4x::measure`] and is not a substitute for
+    /// it: use [`Sht4x::measure`] for a reading taken with the heater off. What
     /// either reading implies about the surrounding air is a system-calibration
     /// question this repository does not answer.
     ///
@@ -258,7 +305,7 @@ impl<I2C, DELAY> Sht45<I2C, DELAY> {
         };
 
         self.i2c
-            .write(ADDRESS, &[command])
+            .write(self.address.bits(), &[command])
             .await
             .map_err(map_i2c_error)?;
 
@@ -266,7 +313,7 @@ impl<I2C, DELAY> Sht45<I2C, DELAY> {
 
         let mut response = [0; RESPONSE_LEN];
         self.i2c
-            .read(ADDRESS, &mut response)
+            .read(self.address.bits(), &mut response)
             .await
             .map_err(map_i2c_error)?;
 
@@ -501,6 +548,27 @@ mod tests {
     }
 
     #[test]
+    fn every_documented_address_is_used_on_the_bus() {
+        // `SHT4X-I2C-ADDR-001`: the address comes from the part number, so the
+        // driver must address what it was constructed for rather than a constant.
+        for (address, bits) in [(Address::A, 0x44), (Address::B, 0x45), (Address::C, 0x46)] {
+            let (i2c, delay, events) = fake([0xbe, 0xef, 0x92, 0xbe, 0xef, 0x92]);
+            let mut sensor = Sht4x::new(address, i2c, delay);
+
+            assert_eq!(sensor.address(), address);
+            assert_eq!(block_on(sensor.read_serial_number()), Ok(0xbeef_beef));
+            assert_eq!(
+                *events.borrow(),
+                vec![
+                    Event::Write(bits, vec![SERIAL_NUMBER_COMMAND]),
+                    Event::DelayNs(10_000),
+                    Event::Read(bits, 6),
+                ]
+            );
+        }
+    }
+
+    #[test]
     fn crc_vector_matches_datasheet_example() {
         assert_eq!(crc8([0xbe, 0xef]), 0x92);
     }
@@ -523,7 +591,7 @@ mod tests {
             (Repeatability::Low, 0xe0, 1_600_000),
         ] {
             let (i2c, delay, events) = fake([0, 0, 0x81, 0, 0, 0x81]);
-            let mut sensor = Sht45::new(i2c, delay);
+            let mut sensor = Sht4x::new(Address::A, i2c, delay);
             assert_eq!(
                 block_on(sensor.measure(repeatability)),
                 Ok(Measurement {
@@ -534,9 +602,9 @@ mod tests {
             assert_eq!(
                 *events.borrow(),
                 vec![
-                    Event::Write(ADDRESS, vec![command]),
+                    Event::Write(Address::A.bits(), vec![command]),
                     Event::DelayNs(delay_ns),
-                    Event::Read(ADDRESS, 6),
+                    Event::Read(Address::A.bits(), 6),
                 ]
             );
         }
@@ -545,7 +613,7 @@ mod tests {
     #[test]
     fn measures_and_converts_both_words() {
         let (i2c, delay, _) = fake([0xbe, 0xef, 0x92, 0xbe, 0xef, 0x92]);
-        let mut sensor = Sht45::new(i2c, delay);
+        let mut sensor = Sht4x::new(Address::A, i2c, delay);
         assert_eq!(
             block_on(sensor.measure(Repeatability::High)),
             Ok(Measurement {
@@ -576,7 +644,7 @@ mod tests {
             (HeaterPower::Low, HeaterDuration::Short, 0x15, 118_300_000),
         ] {
             let (i2c, delay, events) = fake([0xbe, 0xef, 0x92, 0xbe, 0xef, 0x92]);
-            let mut sensor = Sht45::new(i2c, delay);
+            let mut sensor = Sht4x::new(Address::A, i2c, delay);
 
             assert_eq!(
                 block_on(sensor.heater_pulse(power, duration)),
@@ -588,9 +656,9 @@ mod tests {
             assert_eq!(
                 *events.borrow(),
                 vec![
-                    Event::Write(ADDRESS, vec![command]),
+                    Event::Write(Address::A.bits(), vec![command]),
                     Event::DelayNs(delay_ns),
-                    Event::Read(ADDRESS, 6),
+                    Event::Read(Address::A.bits(), 6),
                 ]
             );
         }
@@ -602,7 +670,7 @@ mod tests {
             let mut response = [0xbe, 0xef, 0x92, 0xbe, 0xef, 0x92];
             response[index] ^= 1;
             let (i2c, delay, _) = fake(response);
-            let mut sensor = Sht45::new(i2c, delay);
+            let mut sensor = Sht4x::new(Address::A, i2c, delay);
             assert!(matches!(
                 block_on(sensor.heater_pulse(HeaterPower::Low, HeaterDuration::Short)),
                 Err(Error::Crc { .. })
@@ -621,13 +689,16 @@ mod tests {
         ] {
             let (mut i2c, delay, events) = fake([0; 6]);
             i2c.write_error = Some(write_error);
-            let mut sensor = Sht45::new(i2c, delay);
+            let mut sensor = Sht4x::new(Address::A, i2c, delay);
 
             assert_eq!(
                 block_on(sensor.heater_pulse(HeaterPower::High, HeaterDuration::Long)),
                 Err(expected)
             );
-            assert_eq!(*events.borrow(), vec![Event::Write(ADDRESS, vec![0x39])]);
+            assert_eq!(
+                *events.borrow(),
+                vec![Event::Write(Address::A.bits(), vec![0x39])]
+            );
         }
     }
 
@@ -642,7 +713,7 @@ mod tests {
         ] {
             let (mut i2c, delay, events) = fake([0; 6]);
             i2c.read_error = Some(read_error);
-            let mut sensor = Sht45::new(i2c, delay);
+            let mut sensor = Sht4x::new(Address::A, i2c, delay);
 
             assert_eq!(
                 block_on(sensor.heater_pulse(HeaterPower::Medium, HeaterDuration::Short)),
@@ -651,9 +722,9 @@ mod tests {
             assert_eq!(
                 *events.borrow(),
                 vec![
-                    Event::Write(ADDRESS, vec![0x24]),
+                    Event::Write(Address::A.bits(), vec![0x24]),
                     Event::DelayNs(118_300_000),
-                    Event::Read(ADDRESS, 6),
+                    Event::Read(Address::A.bits(), 6),
                 ]
             );
         }
@@ -665,7 +736,7 @@ mod tests {
             let mut response = [0xbe, 0xef, 0x92, 0xbe, 0xef, 0x92];
             response[index] ^= 1;
             let (i2c, delay, _) = fake(response);
-            let mut sensor = Sht45::new(i2c, delay);
+            let mut sensor = Sht4x::new(Address::A, i2c, delay);
             assert!(matches!(
                 block_on(sensor.measure(Repeatability::Medium)),
                 Err(Error::Crc { .. })
@@ -684,7 +755,7 @@ mod tests {
         ] {
             let (mut i2c, delay, _) = fake([0, 0, 0x81, 0, 0, 0x81]);
             i2c.read_error = Some(read_error);
-            let mut sensor = Sht45::new(i2c, delay);
+            let mut sensor = Sht4x::new(Address::A, i2c, delay);
             assert_eq!(block_on(sensor.measure(Repeatability::Low)), Err(expected));
         }
     }
@@ -692,14 +763,14 @@ mod tests {
     #[test]
     fn reads_serial_with_two_transactions_and_validates_crc() {
         let (i2c, delay, events) = fake([0xbe, 0xef, 0x92, 0xbe, 0xef, 0x92]);
-        let mut sensor = Sht45::new(i2c, delay);
+        let mut sensor = Sht4x::new(Address::A, i2c, delay);
         assert_eq!(block_on(sensor.read_serial_number()), Ok(0xbeef_beef));
         assert_eq!(
             *events.borrow(),
             vec![
-                Event::Write(ADDRESS, vec![SERIAL_NUMBER_COMMAND]),
+                Event::Write(Address::A.bits(), vec![SERIAL_NUMBER_COMMAND]),
                 Event::DelayNs(10_000),
-                Event::Read(ADDRESS, 6),
+                Event::Read(Address::A.bits(), 6),
             ]
         );
     }
@@ -707,13 +778,13 @@ mod tests {
     #[test]
     fn resets_with_one_write_and_one_millisecond_delay_without_reading() {
         let (i2c, delay, events) = fake([0; 6]);
-        let mut sensor = Sht45::new(i2c, delay);
+        let mut sensor = Sht4x::new(Address::A, i2c, delay);
 
         assert_eq!(block_on(sensor.reset()), Ok(()));
         assert_eq!(
             *events.borrow(),
             vec![
-                Event::Write(ADDRESS, vec![SOFT_RESET_COMMAND]),
+                Event::Write(Address::A.bits(), vec![SOFT_RESET_COMMAND]),
                 Event::DelayNs(1_000_000),
             ]
         );
@@ -730,12 +801,12 @@ mod tests {
         ] {
             let (mut i2c, delay, events) = fake([0; 6]);
             i2c.write_error = Some(write_error);
-            let mut sensor = Sht45::new(i2c, delay);
+            let mut sensor = Sht4x::new(Address::A, i2c, delay);
 
             assert_eq!(block_on(sensor.reset()), Err(expected));
             assert_eq!(
                 *events.borrow(),
-                vec![Event::Write(ADDRESS, vec![SOFT_RESET_COMMAND])]
+                vec![Event::Write(Address::A.bits(), vec![SOFT_RESET_COMMAND])]
             );
         }
     }
@@ -746,7 +817,7 @@ mod tests {
             let mut response = [0xbe, 0xef, 0x92, 0xbe, 0xef, 0x92];
             response[index] ^= 1;
             let (i2c, delay, _) = fake(response);
-            let mut sensor = Sht45::new(i2c, delay);
+            let mut sensor = Sht4x::new(Address::A, i2c, delay);
             assert!(matches!(
                 block_on(sensor.read_serial_number()),
                 Err(Error::Crc { .. })
@@ -758,7 +829,7 @@ mod tests {
     fn surfaces_nack_as_not_acknowledge_error() {
         let (mut i2c, delay, _) = fake([0; 6]);
         i2c.read_error = Some(FakeError::NoAcknowledge);
-        let mut sensor = Sht45::new(i2c, delay);
+        let mut sensor = Sht4x::new(Address::A, i2c, delay);
         assert_eq!(
             block_on(sensor.read_serial_number()),
             Err(Error::NoAcknowledge(FakeError::NoAcknowledge))
@@ -769,7 +840,7 @@ mod tests {
     fn preserves_non_nack_bus_error() {
         let (mut i2c, delay, _) = fake([0; 6]);
         i2c.read_error = Some(FakeError::Bus);
-        let mut sensor = Sht45::new(i2c, delay);
+        let mut sensor = Sht4x::new(Address::A, i2c, delay);
         assert_eq!(
             block_on(sensor.read_serial_number()),
             Err(Error::I2c(FakeError::Bus))

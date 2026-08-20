@@ -207,6 +207,101 @@
   a support claim, so the name is not read as covering devices the status
   disclosures do not name.
 
+### Added
+
+- Retained `SHT4X-PART-NOM-001` and `SHT4X-I2C-ADDR-001` from Tables 11 and 12.
+  Together they record that an SHT4x part number encodes accuracy grade at
+  position 5 and I2C address at position 7, independently: the address is
+  `0x44`, `0x45`, or `0x46` as a function of the part number, **not** of the
+  sensor model. Table 12 shows SHT40 at all three addresses and SHT43 at two, so
+  neither axis is derivable from the other.
+- `SHT4X-I2C-ADDR-001` supersedes `SHT45-I2C-ADDR-001`, which is retained and
+  still resolvable. The superseded record's local consequence described
+  `0x45`/`0x46` as SHT40 addresses; that was a narrower reading than Table 11
+  supports, and the superseding record says so.
+- Retained `SHT4X-ACC-001` and `SHT4X-FAMILY-SCOPE-001`. Accuracy varies across
+  the family by grade, but accuracy is a specification of a reading rather than a
+  step in producing one, so the driver performs no grade-dependent processing and
+  makes no accuracy claim. `SHT4X-FAMILY-SCOPE-001` is a documentary proposition
+  about a bounded search: outside Tables 11 and 12, accuracy grade, and the SHT43
+  calibration, the pinned datasheet declares no variation between the parts, and
+  its command, timing, CRC, transfer, conversion, reset, and heater sections are
+  stated for the SHT4x without part qualification.
+- `SHT4X-FAMILY-SCOPE-001` carries an explicit non-claim: it records what the
+  document declares, not what silicon does. A source that does not distinguish
+  the parts is not evidence that the parts are indistinguishable, and the
+  existing model-conformance evidence was never executed against a part other
+  than the modeled SHT45. No `SHT45-` identifier is redefined; each keeps its own
+  referent, and work relying on a behavior holding family-wide cites this
+  identifier alongside it.
+- Retained `SHT4X-SHT43-CAL-001`, recording the SHT43's individual ISO/IEC
+  17025:2017 three-point calibration, its measurement uncertainties, and that
+  its certificates are downloaded per sensor from an external service keyed by
+  serial number. The proposition exists to bound a non-goal with provenance:
+  retrieving and applying that data is network and policy work outside this
+  repository, the driver applies no per-device correction, and because the
+  conversion is unchanged, omitting the certificate introduces no error the
+  driver could otherwise have corrected.
+
+### Documentation
+
+- Recorded how the supported set widens to the SHT4x family without rewriting
+  identifiers: a proposition whose referent widens receives a new `SHT4X-`
+  identifier and the `SHT45-` record it supersedes stays resolvable, so existing
+  citations keep working. Until a `SHT4X-` proposition exists for a behavior,
+  that behavior is retained for the SHT45-AD1B only, whatever the package is
+  named.
+- Recorded the outstanding datasheet reads the widening depends on, each naming
+  the dependent work it enables. None is a claim, a validation assignment, or a
+  release block.
+- Added the SHT43 calibration-data non-goal to the contract and the root README.
+
+### Changed
+
+- **Breaking:** `Sht45` is now `Sht4x`, and `Sht4x::new` takes an `Address`
+  before the bus and delay. The `ADDRESS` constant is replaced by the `Address`
+  enum, whose variants are named for part-number position 7 — `A` for `0x44`,
+  `B` for `0x45`, `C` for `0x46` — so a caller maps straight from the part they
+  ordered. No sensor-model parameter exists, because no driver-observable
+  behavior is declared to vary by accuracy grade.
+- **Breaking:** `Sht45Model` is now `Sht4xModel`, with `Sht4xModel::at` taking
+  the address the modeled device answers on and returning
+  `Err(UnsupportedAddress)` for anything outside the three retained values.
+  `ADDRESS` is replaced by `ADDRESSES` and `DEFAULT_ADDRESS`. A model fixed at
+  one address could not discriminate a driver that ignored the address it was
+  constructed with; one that answered at any address would be inventing a device
+  the sources do not place there.
+- The supported device set is the SHT40, SHT41, SHT43, and SHT45 at any
+  documented address, replacing the SHT45-AD1B alone. The former non-goal
+  excluding family claims is replaced by the propositions that now carry them.
+
+### Added
+
+- Driver coverage that every documented address reaches the bus, and conformance
+  coverage that the driver and model agree at each of the three — plus a check
+  that a driver built for one address and a model built for another surfaces as
+  the model's `WrongAddress` through the driver's public error path.
+
+### Documentation
+
+- Rewrote the status disclosures for the widened set, and recorded the limit
+  that matters: the conformance suite exercises one modeled behavior across
+  three addresses, not four devices. Nothing has been executed against a
+  physical SHT40, SHT41, SHT43, or SHT45, so family coverage rests on
+  `SHT4X-FAMILY-SCOPE-001`'s documentary basis rather than on execution.
+
+### Changed
+
+- `SHT45-HEAT-PWR-001` moves from **unverified** to **supported**. Table 8 states
+  the mapping directly — `0x39`/`0x32` at 200 mW, `0x2F`/`0x24` at 110 mW,
+  `0x1E`/`0x15` at 20 mW — confirming the retained reading and its descending
+  order. The public `HeaterPower` documentation now names the level each variant
+  selects instead of framing it as an unconfirmed reading.
+- Recorded the qualification Table 8's caption attaches to those figures: they
+  are **typical** values stated for **VDD = 3.3 V**. No surface presents them as
+  delivered or guaranteed power. A typical value is not a bound, and what the
+  device draws at any other supply voltage is not retained here.
+
 ### Known issues
 
 - Model conformance covers every current public device operation; no operation

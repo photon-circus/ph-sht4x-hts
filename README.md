@@ -1,30 +1,29 @@
 # ph-sht4x-hts
 
-Incubating unpublished async no_std Rust driver for the Sensirion SHT45 humidity and temperature sensor over abstract I2C.
+Incubating unpublished async no_std Rust driver for the Sensirion SHT4x humidity and temperature sensors — SHT40, SHT41, SHT43, and SHT45 — over abstract I2C.
 
 > [!WARNING]
 > **Lifecycle:** Incubating — bounded work intended to become a supported driver
 > **Distribution:** Unpublished; the candidate version is `0.1.0-incubating.1` and the manifest sets `publish = false`.
-> **Model conformance:** The unpublished host-only conformance check covers the driver's serial-number read, one-shot T/RH measurement at all three repeatabilities, all six heater pulses, and soft-reset abort/recovery.
+> **Supported devices:** SHT40, SHT41, SHT43, and SHT45, at any of the three documented I2C addresses. The address comes from the part number, not the sensor model.
+> **Model conformance:** The unpublished host-only conformance check covers the driver's serial-number read, one-shot T/RH measurement at all three repeatabilities, all six heater pulses, soft-reset abort/recovery, and every documented address, against the independent model. That model implements behavior the datasheet states for the SHT4x without part qualification, recorded as `SHT4X-FAMILY-SCOPE-001`; **no check has been executed against any physical part**, so coverage across the family rests on that documentary basis rather than on execution.
 > **Physical evidence:** None. No reviewed physical-device evidence supports a physically observed or qualified claim.
 > Evidence and limitations apply only to named operations; publication does not imply hardware qualification.
 
-> [!NOTE]
-> The `sht4x` in this name is the family identifier from the organization naming
-> standard, chosen because the supported device set is being widened to the
-> SHT4x family. It is not itself a support claim: the status disclosure above and
-> the supported scope below state which devices this driver actually covers
-> today, and only those are covered.
-
 ## Responsibility and boundaries
 
-This repository owns truthful supported SHT45 operations on one device through an abstract async I2C bus.
+This repository owns truthful supported SHT4x operations on one device through an abstract async I2C bus.
 
-It does not own board topology; concrete bus/GPIO/power resources; sampling cadence; retry/escalation policy; heater application or duty-cycle policy; SHT40/41/43 family claims; model conformance beyond the explicitly named host-only serial-number, T/RH, heater-pulse, and soft-reset checks; or physical qualification.
+It does not own board topology; concrete bus/GPIO/power resources; sampling cadence; retry/escalation policy; heater application or duty-cycle policy; retrieval or application of the SHT43's ISO/IEC 17025 three-point calibration data; model conformance beyond the explicitly named host-only serial-number, T/RH, heater-pulse, and soft-reset checks; or physical qualification.
+
+The supported set is the SHT40, SHT41, SHT43, and SHT45 at any documented address, resting on what the datasheet declares rather than on any part having been exercised. No operation has been executed against a physical device of any model. See [the contract](docs/CONTRACT.md).
 
 ## Supported scope
 
-- Device/family: Sensirion SHT45
+- Device/family: Sensirion SHT4x — SHT40, SHT41, SHT43, SHT45
+- Addressing: `0x44`, `0x45`, or `0x46`, chosen by the caller from position 7 of
+  the part number. The address is not a function of the sensor model, so it is
+  not inferred and the bus is never scanned.
 - Transport: abstract async I2C and delay resources
 - Rust: `1.92.0` on the pinned `1.92.0` toolchain
 - Runtime posture: `no_std`, no allocation, and no unsafe code

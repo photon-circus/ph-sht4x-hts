@@ -2,11 +2,13 @@
 
 ## Responsibility
 
-The repository owns truthful supported SHT45 operations on one device through an abstract async I2C bus.
+The repository owns truthful supported SHT4x operations on one device through an abstract async I2C bus.
 
 ## Non-goals
 
-The repository does not own board topology; concrete bus/GPIO/power resources; sampling cadence; retry/escalation policy; heater application policy; SHT40/41/43 family claims; model conformance beyond the explicitly named host-only serial-number, T/RH, heater-pulse, and soft-reset checks; or physical qualification.
+The repository does not own board topology; concrete bus/GPIO/power resources; sampling cadence; retry/escalation policy; heater application policy; retrieval or application of the SHT43's ISO/IEC 17025 three-point calibration data, per `SHT4X-SHT43-CAL-001`; model conformance beyond the explicitly named host-only serial-number, T/RH, heater-pulse, and soft-reset checks; or physical qualification.
+
+The supported device set is the SHT40, SHT41, SHT43, and SHT45 at any documented address. That set rests on `SHT4X-FAMILY-SCOPE-001`, which records what the datasheet declares rather than what any part does: no operation has been executed against a physical device of any model, and the model conformance below was run against the independent model, not against silicon.
 
 ## Initial invariants
 
@@ -17,6 +19,51 @@ The repository does not own board topology; concrete bus/GPIO/power resources; s
 Refine this list when implementation creates review-blocking invariants; do not inventory hypothetical behavior.
 
 ## Sources and device propositions
+
+### Widening to the SHT4x family
+
+The supported device set is being widened from the SHT45-AD1B alone to the
+SHT40, SHT41, SHT43, and SHT45. The propositions below were retained while the
+scope was one part, and their identifiers say so.
+
+Identifiers are not rewritten. Section 10.2 requires an identifier to name one
+stable referent, never to be reused or redefined, and to remain resolvable after
+it is superseded or split. A proposition whose referent widens from the
+SHT45-AD1B to the family is therefore a *different* proposition: it receives a
+new `SHT4X-` identifier, and the `SHT45-` record it supersedes stays here,
+marked superseded and still resolvable, so citations in merged commits, review
+threads, and agent notes keep resolving.
+
+A `SHT45-` proposition that is genuinely part-specific is not superseded at all.
+It stays as it is and gains a family sibling rather than a replacement.
+
+**Until a `SHT4X-` proposition exists for a behavior, that behavior is retained
+for the SHT45-AD1B only**, whatever the package is named. The package name
+carries the family identifier; the propositions carry the claims, and only they
+decide what is supported.
+
+### Outstanding reads for the widening
+
+This decision work bounds what the widening needs and names the dependent work
+it enables. Each item is a read of the already-pinned datasheet — no new source
+is required — and none is a claim until it is performed and recorded:
+
+| Needed | Enables | Status |
+| --- | --- | --- |
+| Question | Settled by | Outcome |
+| --- | --- | --- |
+| The per-part I2C addresses | Tables 11 and 12 | The address follows part-number position 7, not the sensor model. `SHT4X-PART-NOM-001`, `SHT4X-I2C-ADDR-001`. |
+| Whether Table 8's commands, Table 5's timings, and section 4.6's conversion are stated per part | Bounded search of the pinned document | They are stated for the SHT4x without part qualification. `SHT4X-FAMILY-SCOPE-001`. |
+| Whether any driver-observable behavior varies by accuracy grade | Same search | None is declared. Accuracy is a specification of a reading, not a step in producing one. `SHT4X-ACC-001`. |
+
+The widening therefore needs no sensor-model parameter. It needs a
+caller-supplied address, constrained to the three documented values, and honest
+disclosure of what the evidence covers.
+
+What the search does not settle is device behavior. `SHT4X-FAMILY-SCOPE-001`
+records what the document declares; it creates no physical claim, no validation
+assignment, and no release block, and it does not make the existing
+model-conformance evidence cover a part it was never run against.
 
 Retained propositions are limited to facts consumed by the implemented driver
 operations or the independent model's soft-reset and heater-pulse behavior. They
@@ -29,12 +76,32 @@ retrieved 2026-08-19, 1,049,911 bytes, SHA-256
 Redistribution of the vendor PDF is not claimed; the PDF is not committed to
 this repository. Older SHT4x PDF revisions are not co-authority.
 
-- `SHT45-I2C-ADDR-001` — The SHT45-AD1B 7-bit I2C address is `0x44` (device
-  overview product table, ordering rows SHT45-AD1B-R2/R3; quick-start
-  pseudocode). Evidence state: supported.
-  Local consequence: the driver and model address one SHT45-AD1B at 7-bit
-  `0x44` only; there is no address parameter, and SHT40 `0x45`/`0x46` are
-  unsupported here.
+- `SHT4X-PART-NOM-001` — An SHT4x orderable part number encodes its properties
+  positionally (Table 11). Position 5 is the accuracy grade: `0` base, `1`
+  intermediate, `5` best, `3` ISO 17025 certified — the digit that makes a part
+  an SHT40, SHT41, SHT45, or SHT43. Position 7 is the I2C interface: `A` for
+  address `0x44`, `B` for `0x45`, `C` for `0x46`. Position 9 is `1` reserved or
+  `C` three-point calibrated and certified. Evidence state: supported.
+  Local consequence: accuracy grade and I2C address are independent positions of
+  the part number. Neither is derivable from the other, so the driver must not
+  infer an address from a sensor model or a model from an address.
+- `SHT4X-I2C-ADDR-001` — The 7-bit I2C address of an SHT4x is fixed by position
+  7 of its part number and is `0x44`, `0x45`, or `0x46` (Table 11; Table 12
+  ordering rows). It is not a function of the sensor model: Table 12 lists
+  SHT40 at `0x44`, `0x45`, and `0x46`, SHT43 at both `0x44` and `0x45`, and
+  SHT41 and SHT45 at `0x44`. Evidence state: supported. **Supersedes
+  `SHT45-I2C-ADDR-001`**, whose referent was one part rather than the family.
+  Driver requirement: the address is a caller-supplied value constrained to the
+  three documented values, not a constant and not something selected by a
+  sensor-model parameter. A caller reads it off the part number they ordered.
+- `SHT45-I2C-ADDR-001` — *(Superseded by `SHT4X-I2C-ADDR-001`; retained so
+  existing citations resolve.)* The SHT45-AD1B 7-bit I2C address is `0x44`
+  (device overview product table, ordering rows SHT45-AD1B-R2/R3; quick-start
+  pseudocode). Evidence state: supported for the SHT45-AD1B.
+  Its local consequence — that `0x45`/`0x46` are "SHT40" addresses — was a
+  narrower reading than Table 11 supports: those addresses belong to part-number
+  position 7 across the family, not to the SHT40. `SHT4X-I2C-ADDR-001` records
+  the family fact; this record remains true of the SHT45-AD1B alone.
 - `SHT45-SN-CMD-001` — The serial number is read with command byte `0x89` as
   two 16-bit words, each followed by an 8-bit CRC; the response length
   including CRC is 6 bytes, and the command duration is 0.01 ms (Table 8,
@@ -120,21 +187,21 @@ this repository. Older SHT4x PDF revisions are not co-authority.
   separately as `SHT45-HEAT-PWR-001`.
 - `SHT45-HEAT-PWR-001` — Each heater command byte selects one of three
   documented heater power levels, stated in the same Table 8 command
-  description that gives its pulse duration. The retained reading is that
-  `0x39` and `0x32` select 200 mW, `0x2F` and `0x24` select 110 mW, and `0x1E`
-  and `0x15` select 20 mW. Evidence state: **unverified** — that reading has not
-  been checked against the pinned PDF and its recorded SHA-256, so no retained
-  item decides this proposition. Missing evidence is not approval: until a
-  maintainer performs that read, neither the byte-to-power mapping nor its
-  descending order is established.
+  description that gives its pulse duration: `0x39` and `0x32` select 200 mW,
+  `0x2F` and `0x24` select 110 mW, and `0x1E` and `0x15` select 20 mW.
+  Table 8's caption qualifies those figures: they are **typical** values, valid
+  for **VDD = 3.3 V**. Evidence state: supported.
   Driver requirement: `HeaterPower::High`, `HeaterPower::Medium`, and
-  `HeaterPower::Low` select the matching byte for either pulse duration, and
-  public documentation names the byte each variant selects while citing this
-  identifier for the power figures rather than asserting them.
-  Local consequence: no public surface may describe a `HeaterPower` variant as a
-  confirmed wattage while this proposition is unverified. Per
-  `SHT45-HEAT-SEQ-001`, delivered energy, duty-cycle limiting, and watt metering
-  remain outside this repository regardless.
+  `HeaterPower::Low` name those levels in descending order and select the
+  matching byte for either pulse duration.
+  Local consequence: the public API names the documented level so a caller can
+  choose deliberately, and no surface may present the wattage as a delivered or
+  guaranteed figure. A typical value is not a bound, and the figures are
+  qualified to one supply voltage; what the device draws at any other voltage is
+  not something this repository has retained. Per `SHT45-HEAT-SEQ-001`,
+  delivered energy, duty-cycle limiting, and watt metering remain outside this
+  repository regardless.
+
 - `SHT45-HEAT-TIME-001` — The maximum heater time is 1.1 s for a long pulse and
   0.11 s for a short pulse, followed by the high-repeatability measurement
   maximum of 8.3 ms (`tHeater`, `tMEAS,h`, Table 5). Typical pulse widths and
@@ -150,6 +217,54 @@ this repository. Older SHT4x PDF revisions are not co-authority.
   limiting, and watt metering remain outside this repository; soft reset
   aborts heater activity through `SHT45-RST-ABORT-001`, and other writes while
   heater-busy remain outside model fidelity.
+
+- `SHT4X-ACC-001` — Measurement accuracy varies across the family by the
+  accuracy grade at part-number position 5: base, intermediate, best, and the
+  ISO 17025 certified grade (Table 11; Table 12 details column). Evidence state:
+  supported.
+  Local consequence: accuracy is a specification of a reading, not a step in
+  producing one. The driver performs no grade-dependent processing, selects
+  nothing by grade, and makes no accuracy claim of its own — stated accuracy
+  belongs to the part a caller ordered, and system calibration and
+  product-level accuracy are integration concerns.
+- `SHT4X-FAMILY-SCOPE-001` — A documentary proposition about a bounded search of
+  the pinned datasheet. Outside Tables 11 and 12, the accuracy grade of
+  `SHT4X-ACC-001`, and the SHT43 calibration of `SHT4X-SHT43-CAL-001`, the
+  document declares no variation between the SHT40, SHT41, SHT43, and SHT45. Its
+  command table (Table 8), timing table (Table 5), CRC definition (Table 7,
+  section 4.4), transfer behavior (section 4.1), conversion formulae (section
+  4.6), reset behavior (sections 4.8), and heater sequence (section 4.9) are
+  stated for the SHT4x without part qualification. Evidence state: supported as
+  a statement about the document.
+  Local consequence: the behaviors retained below for the SHT45 are documented
+  for the family, so the driver may address any SHT4x at a documented address
+  without part-dependent branching. Each `SHT45-` record keeps its own referent
+  and wording; downstream work that relies on a behavior holding family-wide
+  cites this identifier alongside it, rather than any `SHT45-` identifier being
+  redefined.
+  **Non-claim:** this records what the document declares, not what silicon does.
+  A source that does not distinguish the parts is not evidence that the parts are
+  indistinguishable. No physical evidence exists for any SHT4x here, and none of
+  the model-conformance evidence recorded below was executed against a part
+  other than the modeled SHT45.
+- `SHT4X-SHT43-CAL-001` — Every SHT43 carries an individual three-point
+  calibration at −30 °C, 5 °C, and 70 °C, accredited to ISO/IEC 17025:2017 by
+  the Swiss Accreditation Service under SCS 0158. The expanded measurement
+  uncertainty (k = 2, 95 % confidence) is 0.40 °C at −30 °C and 0.20 °C at both
+  5 °C and 70 °C, under the shared-risk decision rule of JCGM 106:2012 section
+  8.2. Each sensor is identified by the serial number read with the command of
+  section 4.7, and its certificate and calibration data are downloaded per
+  sensor, or reel-wise, from `libellus.sensirion.com` (section 2.4, Table 3).
+  Evidence state: supported.
+  Local consequence: this is an out-of-band data product retrieved over a
+  network, not a device operation over I2C, so retrieving or applying it is
+  outside this repository — as system calibration and product-level accuracy
+  already are. The driver applies no per-device correction. What it does supply
+  is the identifying serial number, through the operation recorded by
+  `SHT45-SN-CMD-001`, which is the key the certificate is filed under.
+  Omitting the certificate introduces no error the driver could otherwise have
+  corrected: the certificate refines the stated accuracy of a reading, it does
+  not change how the reading is converted.
 
 Add the smallest permanent proposition and exact provenance only when current
 implementation, model, conformance, physical evidence, an approved
@@ -173,10 +288,19 @@ validation assignment.
   while preserving the explicit OTP serial. This does not establish driver
   conformance or device behavior.
 - Model-conformant: serial-number read, T/RH measurement at high, medium, and
-  low repeatability, all six heater pulses, and soft-reset abort/recovery,
-  through the unpublished host-only conformance package's public driver/model
-  adapter check, with independently asserted command and maximum-delay
-  mappings. This covers every current public device operation.
+  low repeatability, all six heater pulses, soft-reset abort/recovery, and each
+  of the three documented I2C addresses, through the unpublished host-only
+  conformance package's public driver/model adapter check, with independently
+  asserted command, address, and maximum-delay mappings. This covers every
+  current public device operation.
+  It does not cover every supported *device*. The check runs against the
+  independent model, and the model implements one behavior — the one the
+  datasheet states for the SHT4x without part qualification, per
+  `SHT4X-FAMILY-SCOPE-001`. Nothing here was executed against an SHT40, SHT41,
+  SHT43, or SHT45. That the driver is claimed to work across the family follows
+  from what the document declares, not from having exercised more than one part,
+  and a document that does not distinguish the parts is not evidence that the
+  parts are indistinguishable.
 - Physically observed: none.
 - Qualified: none.
 
