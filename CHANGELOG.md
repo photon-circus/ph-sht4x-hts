@@ -219,6 +219,21 @@
   still resolvable. The superseded record's local consequence described
   `0x45`/`0x46` as SHT40 addresses; that was a narrower reading than Table 11
   supports, and the superseding record says so.
+- Retained `SHT4X-ACC-001` and `SHT4X-FAMILY-SCOPE-001`. Accuracy varies across
+  the family by grade, but accuracy is a specification of a reading rather than a
+  step in producing one, so the driver performs no grade-dependent processing and
+  makes no accuracy claim. `SHT4X-FAMILY-SCOPE-001` is a documentary proposition
+  about a bounded search: outside Tables 11 and 12, accuracy grade, and the SHT43
+  calibration, the pinned datasheet declares no variation between the parts, and
+  its command, timing, CRC, transfer, conversion, reset, and heater sections are
+  stated for the SHT4x without part qualification.
+- `SHT4X-FAMILY-SCOPE-001` carries an explicit non-claim: it records what the
+  document declares, not what silicon does. A source that does not distinguish
+  the parts is not evidence that the parts are indistinguishable, and the
+  existing model-conformance evidence was never executed against a part other
+  than the modeled SHT45. No `SHT45-` identifier is redefined; each keeps its own
+  referent, and work relying on a behavior holding family-wide cites this
+  identifier alongside it.
 - Retained `SHT4X-SHT43-CAL-001`, recording the SHT43's individual ISO/IEC
   17025:2017 three-point calibration, its measurement uncertainties, and that
   its certificates are downloaded per sensor from an external service keyed by

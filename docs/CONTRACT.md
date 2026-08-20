@@ -50,15 +50,20 @@ is required — and none is a claim until it is performed and recorded:
 
 | Needed | Enables | Status |
 | --- | --- | --- |
-| ~~The per-part I2C addresses~~ | — | **Read.** Answered differently than asked: the address is a function of part-number position 7, not of the sensor model. Recorded as `SHT4X-PART-NOM-001` and `SHT4X-I2C-ADDR-001`. |
-| Whether any driver-observable behavior varies by accuracy grade (part-number position 5) at all | Whether the public API needs a sensor-model concept, or only an address | Not read |
-| Whether Table 8's command bytes are stated for the SHT4x family or per part | Family siblings for the serial, measurement, reset, and heater command propositions | Not read |
-| Whether Table 5's timing bounds are stated for the family or per part | Family siblings for the measurement, reset, and heater timing propositions | Not read |
-| Whether the section 4.6 conversion formulae are stated for the family | A family sibling for `SHT45-MEAS-CONV-001`, and whether conversion depends on the accuracy grade at all | Not read |
+| Question | Settled by | Outcome |
+| --- | --- | --- |
+| The per-part I2C addresses | Tables 11 and 12 | The address follows part-number position 7, not the sensor model. `SHT4X-PART-NOM-001`, `SHT4X-I2C-ADDR-001`. |
+| Whether Table 8's commands, Table 5's timings, and section 4.6's conversion are stated per part | Bounded search of the pinned document | They are stated for the SHT4x without part qualification. `SHT4X-FAMILY-SCOPE-001`. |
+| Whether any driver-observable behavior varies by accuracy grade | Same search | None is declared. Accuracy is a specification of a reading, not a step in producing one. `SHT4X-ACC-001`. |
 
-Missing evidence remains undefined and creates no claim. Nothing in this table
-is a validation assignment, and none of it blocks a release of the current,
-narrower supported set.
+The widening therefore needs no sensor-model parameter. It needs a
+caller-supplied address, constrained to the three documented values, and honest
+disclosure of what the evidence covers.
+
+What the search does not settle is device behavior. `SHT4X-FAMILY-SCOPE-001`
+records what the document declares; it creates no physical claim, no validation
+assignment, and no release block, and it does not make the existing
+model-conformance evidence cover a part it was never run against.
 
 Retained propositions are limited to facts consumed by the implemented driver
 operations or the independent model's soft-reset and heater-pulse behavior. They
@@ -213,6 +218,35 @@ this repository. Older SHT4x PDF revisions are not co-authority.
   aborts heater activity through `SHT45-RST-ABORT-001`, and other writes while
   heater-busy remain outside model fidelity.
 
+- `SHT4X-ACC-001` — Measurement accuracy varies across the family by the
+  accuracy grade at part-number position 5: base, intermediate, best, and the
+  ISO 17025 certified grade (Table 11; Table 12 details column). Evidence state:
+  supported.
+  Local consequence: accuracy is a specification of a reading, not a step in
+  producing one. The driver performs no grade-dependent processing, selects
+  nothing by grade, and makes no accuracy claim of its own — stated accuracy
+  belongs to the part a caller ordered, and system calibration and
+  product-level accuracy are integration concerns.
+- `SHT4X-FAMILY-SCOPE-001` — A documentary proposition about a bounded search of
+  the pinned datasheet. Outside Tables 11 and 12, the accuracy grade of
+  `SHT4X-ACC-001`, and the SHT43 calibration of `SHT4X-SHT43-CAL-001`, the
+  document declares no variation between the SHT40, SHT41, SHT43, and SHT45. Its
+  command table (Table 8), timing table (Table 5), CRC definition (Table 7,
+  section 4.4), transfer behavior (section 4.1), conversion formulae (section
+  4.6), reset behavior (sections 4.8), and heater sequence (section 4.9) are
+  stated for the SHT4x without part qualification. Evidence state: supported as
+  a statement about the document.
+  Local consequence: the behaviors retained below for the SHT45 are documented
+  for the family, so the driver may address any SHT4x at a documented address
+  without part-dependent branching. Each `SHT45-` record keeps its own referent
+  and wording; downstream work that relies on a behavior holding family-wide
+  cites this identifier alongside it, rather than any `SHT45-` identifier being
+  redefined.
+  **Non-claim:** this records what the document declares, not what silicon does.
+  A source that does not distinguish the parts is not evidence that the parts are
+  indistinguishable. No physical evidence exists for any SHT4x here, and none of
+  the model-conformance evidence recorded below was executed against a part
+  other than the modeled SHT45.
 - `SHT4X-SHT43-CAL-001` — Every SHT43 carries an individual three-point
   calibration at −30 °C, 5 °C, and 70 °C, accredited to ISO/IEC 17025:2017 by
   the Swiss Accreditation Service under SCS 0158. The expanded measurement
