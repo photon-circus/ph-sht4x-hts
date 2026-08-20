@@ -152,6 +152,37 @@
 
 - Recorded the verified bare-metal targets and what the local gate establishes.
 
+### Added
+
+- `Display` and `core::error::Error` for the driver's `Error`, so a caller can
+  report a failure without matching every variant by hand. `source()` exposes
+  the underlying transport error.
+
+### Changed
+
+- **Breaking:** the driver's `Error` is now `#[non_exhaustive]`, so a future
+  variant is no longer a breaking change for downstream matches.
+- Documented the `Error::Crc` fields, including which response word index `0`
+  and `1` name for each operation, and enabled `deny(missing_docs)`.
+- Named the measurement duration constants and expressed each heater bound as
+  its pulse plus the trailing high-repeatability measurement, so the composite
+  is visible rather than folded into one literal.
+- Merged the duplicated CRC-validation loop in the driver, and the identical
+  measurement and heater response arms in the model, into single
+  implementations.
+- Renamed the conformance test file from `serial_number.rs` to `conformance.rs`;
+  it has covered every public operation since the measurement work.
+- The serial-number conformance case now routes the driver's delay into model
+  time and asserts its trace instead of using a no-op delay, and CRC corruption
+  is exercised on both response words rather than only the first.
+- Replaced the adapter's duplicate of a model-owned frame assertion with checks
+  only the adapter can make: that a multi-operation transaction is rejected, and
+  that a model limitation never reaches the driver as a claimed device NACK.
+
+### Documentation
+
+- Recorded the repository's load-bearing invariants and traps in `AGENTS.md`.
+
 ### Known issues
 
 - Model conformance covers every current public device operation; no operation

@@ -139,8 +139,8 @@ impl Sht45Model {
         }
         let action_busy = matches!(
             self.pending,
-            Some(PendingCommand::Measurement { ready_at_ns, .. })
-                | Some(PendingCommand::Heater { ready_at_ns, .. })
+            Some(PendingCommand::Measurement { ready_at_ns, .. }
+                | PendingCommand::Heater { ready_at_ns, .. })
                 if self.elapsed_ns < ready_at_ns
         );
         let reset_busy = matches!(
@@ -237,43 +237,23 @@ impl Sht45Model {
         }
         match self.pending {
             Some(PendingCommand::Serial) => {
-                let words = [(self.serial >> 16) as u16, self.serial as u16];
-                for (index, word) in words.into_iter().enumerate() {
-                    let bytes = word.to_be_bytes();
-                    let offset = index * 3;
-                    response[offset..offset + 2].copy_from_slice(&bytes);
-                    response[offset + 2] = crc8(bytes);
-                }
+                write_frame(response, [(self.serial >> 16) as u16, self.serial as u16]);
                 self.pending = None;
                 self.measurement_consumed = false;
                 Ok(())
             }
-            Some(PendingCommand::Measurement { ready_at_ns, ticks }) => {
+            // A heater pulse's trailing conversion returns the same
+            // high-repeatability frame a measurement does, per
+            // `SHT45-HEAT-CMD-001`. Only the frontier differs, and that is
+            // already carried in `ready_at_ns`.
+            Some(
+                PendingCommand::Measurement { ready_at_ns, ticks }
+                | PendingCommand::Heater { ready_at_ns, ticks },
+            ) => {
                 if self.elapsed_ns < ready_at_ns {
                     return Err(Error::Busy);
                 }
-                let words = [ticks.temperature, ticks.humidity];
-                for (index, word) in words.into_iter().enumerate() {
-                    let bytes = word.to_be_bytes();
-                    let offset = index * 3;
-                    response[offset..offset + 2].copy_from_slice(&bytes);
-                    response[offset + 2] = crc8(bytes);
-                }
-                self.pending = None;
-                self.measurement_consumed = true;
-                Ok(())
-            }
-            Some(PendingCommand::Heater { ready_at_ns, ticks }) => {
-                if self.elapsed_ns < ready_at_ns {
-                    return Err(Error::Busy);
-                }
-                let words = [ticks.temperature, ticks.humidity];
-                for (index, word) in words.into_iter().enumerate() {
-                    let bytes = word.to_be_bytes();
-                    let offset = index * 3;
-                    response[offset..offset + 2].copy_from_slice(&bytes);
-                    response[offset + 2] = crc8(bytes);
-                }
+                write_frame(response, [ticks.temperature, ticks.humidity]);
                 self.pending = None;
                 self.measurement_consumed = true;
                 Ok(())
@@ -289,6 +269,16 @@ impl Sht45Model {
             None if self.measurement_consumed => Err(Error::MeasurementDataUnavailable),
             None => Err(Error::ReadBeforeCommand),
         }
+    }
+}
+
+/// Lay two big-endian words and their CRC bytes into a six-byte response.
+fn write_frame(response: &mut [u8], words: [u16; 2]) {
+    for (index, word) in words.into_iter().enumerate() {
+        let bytes = word.to_be_bytes();
+        let offset = index * 3;
+        response[offset..offset + 2].copy_from_slice(&bytes);
+        response[offset + 2] = crc8(bytes);
     }
 }
 

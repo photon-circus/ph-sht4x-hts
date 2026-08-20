@@ -45,7 +45,7 @@ enum AdapterEvent {
 struct ModelI2c {
     model: SharedModel,
     events: SharedEvents,
-    corrupt_crc: bool,
+    corrupt_crc_at: Option<usize>,
 }
 
 struct ModelDelay {
@@ -72,7 +72,7 @@ impl ModelI2c {
         let i2c = Self {
             model: Rc::clone(&model),
             events: Rc::clone(&events),
-            corrupt_crc: false,
+            corrupt_crc_at: None,
         };
         let delay = ModelDelay {
             model,
@@ -81,8 +81,10 @@ impl ModelI2c {
         (i2c, delay, events)
     }
 
-    fn corrupt_next_crc(&mut self) {
-        self.corrupt_crc = true;
+    /// Corrupt one CRC byte of the next model frame. Index 2 is the first
+    /// word's CRC, index 5 the second's.
+    fn corrupt_next_crc_at(&mut self, index: usize) {
+        self.corrupt_crc_at = Some(index);
     }
 }
 
@@ -120,9 +122,8 @@ impl I2c for ModelI2c {
                     .borrow_mut()
                     .read(address, response)
                     .map_err(AdapterError::Model)?;
-                if self.corrupt_crc {
-                    response[2] ^= 1;
-                    self.corrupt_crc = false;
+                if let Some(index) = self.corrupt_crc_at.take() {
+                    response[index] ^= 1;
                 }
                 Ok(())
             }
@@ -145,35 +146,79 @@ impl DelayNs for NoopDelay {
 
 #[test]
 fn public_serial_read_conforms_to_the_model_frame() {
-    let (i2c, _delay, _events) = ModelI2c::new(0x1234_5678);
-    let mut sensor = Sht45::new(i2c, NoopDelay);
+    let (i2c, delay, events) = ModelI2c::new(0x1234_5678);
+    let mut sensor = Sht45::new(i2c, delay);
 
     assert_eq!(block_on(sensor.read_serial_number()), Ok(0x1234_5678));
+    assert_eq!(
+        *events.borrow(),
+        [
+            AdapterEvent::Write {
+                address: ADDRESS,
+                bytes: vec![SERIAL_NUMBER_COMMAND],
+            },
+            AdapterEvent::DelayNs(10_000),
+            AdapterEvent::Read {
+                address: ADDRESS,
+                length: 6,
+            },
+        ]
+    );
 }
 
 #[test]
-fn public_serial_read_rejects_an_adapter_corrupted_model_frame() {
-    let (mut i2c, _delay, _events) = ModelI2c::new(0xbeef_beef);
-    i2c.corrupt_next_crc();
-    let mut sensor = Sht45::new(i2c, NoopDelay);
+fn public_serial_read_rejects_a_corrupted_crc_on_either_word() {
+    for (index, expected_word) in [(2, 0), (5, 1)] {
+        let (mut i2c, delay, _events) = ModelI2c::new(0x1234_5678);
+        i2c.corrupt_next_crc_at(index);
+        let mut sensor = Sht45::new(i2c, delay);
 
-    assert!(matches!(
-        block_on(sensor.read_serial_number()),
-        Err(DriverError::Crc { word: 0, .. })
-    ));
+        match block_on(sensor.read_serial_number()) {
+            Err(DriverError::Crc { word, .. }) => assert_eq!(word, expected_word),
+            other => panic!("expected a CRC error on word {expected_word}, got {other:?}"),
+        }
+    }
 }
 
+/// The adapter is the conformance package's own code, so it owns this check.
+/// The driver issues one operation per transaction; anything else would mean
+/// the comparison is no longer exercising the two-STOP domain the model
+/// declares, and the adapter must say so rather than guess.
 #[test]
-fn adapter_exposes_the_model_command_domain() {
+fn adapter_rejects_a_transaction_the_model_domain_does_not_cover() {
     let (mut i2c, _delay, _events) = ModelI2c::new(0xbeef_beef);
-    let mut operations = [Operation::Write(&[SERIAL_NUMBER_COMMAND])];
-
-    block_on(i2c.transaction(ADDRESS, &mut operations)).unwrap();
     let mut response = [0; 6];
-    let mut operations = [Operation::Read(&mut response)];
-    block_on(i2c.transaction(ADDRESS, &mut operations)).unwrap();
+    let mut operations = [
+        Operation::Write(&[SERIAL_NUMBER_COMMAND]),
+        Operation::Read(&mut response),
+    ];
 
-    assert_eq!(response, [0xbe, 0xef, 0x92, 0xbe, 0xef, 0x92]);
+    assert_eq!(
+        block_on(i2c.transaction(ADDRESS, &mut operations)),
+        Err(AdapterError::UnexpectedOperation)
+    );
+}
+
+/// A model limitation must not reach the driver dressed as a device response.
+/// `Busy` is documented device behavior under `SHT45-I2C-XFER-001` and maps to
+/// a NACK; everything else is the model saying it cannot answer, and must not
+/// claim the device produced it.
+#[test]
+fn adapter_distinguishes_device_behavior_from_model_limitations() {
+    use embedded_hal::i2c::{Error as _, ErrorKind, NoAcknowledgeSource};
+
+    assert_eq!(
+        AdapterError::Model(ModelError::Busy).kind(),
+        ErrorKind::NoAcknowledge(NoAcknowledgeSource::Data)
+    );
+    for limitation in [
+        ModelError::ReadBeforeCommand,
+        ModelError::WriteWhileBusy,
+        ModelError::MeasurementDataUnavailable,
+    ] {
+        assert_eq!(AdapterError::Model(limitation).kind(), ErrorKind::Other);
+    }
+    assert_eq!(AdapterError::UnexpectedOperation.kind(), ErrorKind::Other);
 }
 
 /// The driver derives CRC-8 with a bit-at-a-time shift register; the model
@@ -234,7 +279,7 @@ fn public_measure_conforms_at_each_repeatability_frontier() {
 #[test]
 fn public_measure_rejects_an_adapter_corrupted_model_frame() {
     let (mut i2c, delay, _events) = ModelI2c::with_measurement_ticks(0, 0xbeef, 0xbeef);
-    i2c.corrupt_next_crc();
+    i2c.corrupt_next_crc_at(2);
     let mut sensor = Sht45::new(i2c, delay);
 
     assert!(matches!(
@@ -304,7 +349,7 @@ fn public_heater_pulse_conforms_for_all_power_and_duration_selections() {
 #[test]
 fn public_heater_pulse_rejects_an_adapter_corrupted_model_frame() {
     let (mut i2c, delay, _events) = ModelI2c::with_measurement_ticks(0, 0xbeef, 0xbeef);
-    i2c.corrupt_next_crc();
+    i2c.corrupt_next_crc_at(2);
     let mut sensor = Sht45::new(i2c, delay);
 
     assert!(matches!(
