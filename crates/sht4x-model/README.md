@@ -1,4 +1,4 @@
-# ph-sht45-hts-model
+# ph-sht4x-hts-model
 
 Unpublished independent behavioral model for selected SHT45-AD1B serial-number,
 one-shot T/RH, and heater-pulse operations, including soft-reset abort behavior.
@@ -48,7 +48,7 @@ two-STOP transaction domain. Combined `write_read` or repeated-start behavior
 is unsupported by this model.
 
 This package is a behavioral selection aid for model-only tests, not a public
-driver or a claim of model conformance by `ph-sht45-hts`.
+driver or a claim of model conformance by `ph-sht4x-hts`.
 
 ## License
 

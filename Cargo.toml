@@ -1,10 +1,10 @@
 [workspace]
 resolver = "3"
-members = ["crates/sht45", "crates/sht45-model", "crates/sht45-conformance"]
+members = ["crates/sht4x", "crates/sht4x-model", "crates/sht4x-conformance"]
 
 [workspace.package]
 authors = ["Steven Giacomelli"]
 edition = "2024"
 license = "MIT"
-repository = "https://github.com/photon-circus/ph-sht45-hts"
+repository = "https://github.com/photon-circus/ph-sht4x-hts"
 rust-version = "1.92.0"

@@ -99,7 +99,7 @@
 
 
 - Moved the conformance package's `embedded-hal`, `embedded-hal-async`,
-  `ph-sht45-hts`, and `ph-sht45-hts-model` dependencies from `[dependencies]` to
+  `ph-sht4x-hts`, and `ph-sht4x-hts-model` dependencies from `[dependencies]` to
   `[dev-dependencies]`. Its library target contains no conformance code and uses
   none of them; only the integration test does. The dependency graph now states
   that the driver and the model meet in a test rather than in a library.
@@ -188,6 +188,24 @@
   rules, the ordinary-release gate, and the publication steps.
 - These documents change no status. The repository remains private, Incubating,
   and unpublished, and all three manifests retain `publish = false`.
+
+### Changed
+
+- **Breaking:** renamed the three packages to `ph-sht4x-hts`,
+  `ph-sht4x-hts-model` and `ph-sht4x-hts-conformance`, and their directories to
+  `crates/sht4x`, `crates/sht4x-model` and `crates/sht4x-conformance`, following
+  the repository rename and the naming standard's rule that the repository and
+  its primary package share a name. Rust import paths change accordingly
+  (`ph_sht45_hts` becomes `ph_sht4x_hts`). No package has been published, so no
+  registry name is affected.
+- Pointed the workspace `repository` metadata at the renamed repository, and
+  added `sht4x` to the driver's registry keywords alongside `sht45`.
+
+### Documentation
+
+- Recorded that the `sht4x` in the package name is the family identifier and not
+  a support claim, so the name is not read as covering devices the status
+  disclosures do not name.
 
 ### Known issues
 

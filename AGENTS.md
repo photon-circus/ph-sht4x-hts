@@ -1,4 +1,8 @@
-# Agent notes — ph-sht45-hts
+# Agent notes — ph-sht4x-hts
+
+The package name carries the SHT4x family identifier because the supported
+device set is being widened. It is not a support claim; `docs/CONTRACT.md` and
+the status disclosures state what is actually covered.
 
 The adopted Photon Circus organization standards and this repository's recorded contracts are authoritative. Read `README.md` and `docs/CONTRACT.md` before changing behavior.
 
