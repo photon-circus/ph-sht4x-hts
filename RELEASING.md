@@ -99,16 +99,10 @@ immediately below the heading saying why it was added, which limitation it
 addresses, what value it provides, and what it costs. A list of APIs is not a
 value statement.
 
-**2. Confirm the status disclosures are true.** The root README, the packaged
-README, and `docs/CONTRACT.md` must state the actual lifecycle, distribution,
-model-conformance scope, and physical-evidence status of the commit being
-released. Partial model coverage names covered and uncovered operations. A link
-to an unpackaged or private record does not satisfy this.
-
-**3. Set the version.** Update all three manifests, then `cargo update
+**2. Set the version.** Update all three manifests, then `cargo update
 --workspace` so `Cargo.lock` matches.
 
-**4. Unlock publication.** Replace `publish = false` with `publish =
+**3. Unlock publication.** Replace `publish = false` with `publish =
 ["crates-io"]` in `crates/sht45/Cargo.toml` only. The model and conformance
 packages stay unpublished.
 
@@ -119,16 +113,40 @@ gate is meant to fail while the manifests and the intended distribution state
 disagree, so unlocking publication is an explicit edit to the check that guards
 it rather than something a manifest change can do quietly.
 
-**5. Verify.**
+**4. Bring the status disclosures up to the state you just created.** This comes
+*after* the version and publication edits, not before: the root README and the
+packaged README both embed the exact candidate version and state that the
+manifest sets `publish = false`. Steps 2 and 3 make both statements false, and
+the packaged README is what a reader on crates.io sees, so leaving them for a
+later pass ships a package whose distribution claims contradict the package.
+
+Update, in the same commit as steps 1 through 3:
+
+- the version named in both status disclosures;
+- the distribution line — unpublished, prerelease, or ordinary release, with the
+  exact version;
+- the model-conformance scope and physical-evidence status, which must state the
+  actual evidence for the commit being released. Partial model coverage names
+  covered and uncovered operations. A link to an unpackaged or private record
+  does not satisfy this.
+
+**5. Commit the release edits.** Steps 1 through 4 are one commit. The working
+tree must be clean before anything is verified, tagged, or published: the gate's
+package checks fall back to the working tree when it is dirty and say so, and
+`cargo publish` refuses a dirty tree outright. Confirm with `git status
+--porcelain` returning nothing.
+
+**6. Verify.**
 
 ```sh
 ./scripts/ci.sh
 ```
 
-Record the toolchain, host, and any skipped check. A skipped check is not a
-passed check.
+Record the toolchain, host, and any skipped or indeterminate check. Neither is a
+passed check. On a clean tree the package checks print no notice; a notice here
+means step 5 was not finished.
 
-**6. Inspect the artifact.**
+**7. Inspect the artifact.**
 
 ```sh
 cargo package --locked --manifest-path crates/sht45/Cargo.toml --list
@@ -137,26 +155,27 @@ cargo package --locked --manifest-path crates/sht45/Cargo.toml --list
 Confirm the packaged set contains the licence, README, and sources, and no
 vendor material. The vendor datasheet is never committed and never packaged.
 
-**7. Tag the verified commit.** The tag is the full SemVer with a leading `v`
-and nothing else:
+**8. Tag the verified commit.** Name the commit explicitly rather than relying on
+`HEAD`, so the tag cannot land on a different object than the one just verified.
+The tag is the full SemVer with a leading `v` and nothing else:
 
 ```sh
-git tag -a v0.1.0-incubating.2 -m 'ph-sht45-hts 0.1.0-incubating.2'
+git tag -a v0.1.0-incubating.2 <verified-commit> -m 'ph-sht45-hts 0.1.0-incubating.2'
 git push origin v0.1.0-incubating.2
 ```
 
-**8. Publish.**
+**9. Publish.**
 
 ```sh
 cargo publish --locked --manifest-path crates/sht45/Cargo.toml
 ```
 
-**9. Create the GitHub Release** on that tag, containing the corresponding
+**10. Create the GitHub Release** on that tag, containing the corresponding
 changelog section. **Mark it as a prerelease whenever the version has a
 prerelease component.** The tag and the packaged version must match exactly
 apart from the leading `v`.
 
-**10. Reopen `Unreleased`** in `CHANGELOG.md`.
+**11. Reopen `Unreleased`** in `CHANGELOG.md`.
 
 ## After publishing
 

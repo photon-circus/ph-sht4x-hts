@@ -89,11 +89,13 @@ Run the canonical gate:
 ./scripts/ci.sh
 ```
 
-It is authoritative for this repository; no hosted workflow is assumed. It
-requires a committed tree, because it constructs and verifies the driver's
-package archive.
+It is authoritative for this repository; no hosted workflow is assumed, and it
+runs over uncommitted work — when the tree is dirty, the package checks cover
+the working tree rather than the committed one and print a notice saying so.
+Only the release procedure needs a clean checkout.
 
-Report skipped checks as skipped. A skipped check is not a passed check.
+Report skipped checks as skipped, and `indeterminate` checks as indeterminate.
+Neither is a passed check.
 
 ## Pull requests
 
