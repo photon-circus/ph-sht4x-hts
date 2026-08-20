@@ -33,6 +33,12 @@ all six heater pulses, and soft reset for one SHT45-AD1B device. The driver owns
 each pulse's complete wait and read sequence; the caller owns application-level
 heater cadence and duty-cycle policy. See [the package README](crates/sht45/README.md).
 
+A heater pulse converts while the heater is still on, so the reading it returns
+describes the heated sensor rather than one taken with the heater off. How the
+two differ is heater physics and stays unclaimed here, as does what either
+implies about the surrounding air. The two share the `Measurement` type and are
+not substitutes for one another.
+
 ## Evidence and limitations
 
 Model conformance covers the host-only serial-number, T/RH measure, all six heater pulses, and soft-reset abort/recovery checks described below; no physical-device claim is made. Host compilation, linting, tests, and package inspection establish only their named software properties.

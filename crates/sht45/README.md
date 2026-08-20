@@ -17,6 +17,19 @@ This package is not available from crates.io.
 
 The package supports implementation-tested serial-number and one-shot T/RH reads, all six heater pulses, and soft reset for one SHT45-AD1B at 7-bit I2C address `0x44`. The serial read writes command `0x89`, waits at least 10 µs, reads six response bytes, validates both CRC-8 values, and returns the transmission-order `u32` serial number. A measurement writes `0xFD`, `0xF6`, or `0xE0` for high, medium, or low repeatability, waits the corresponding maximum duration of 8.3, 4.5, or 1.6 ms, then reads and validates six response bytes. A heater pulse selects one of the three heater commands available for the requested duration, waits the complete 1.1083 s or 118.3 ms bound, and returns the heater's on-chip high-repeatability measurement. Which command carries which power level is recorded as `SHT45-HEAT-PWR-001`, whose figures have not been verified against the pinned datasheet, so the `HeaterPower` variant names are the retained reading of that ordering rather than an established device fact. Soft reset writes `0x94`, waits 1 ms, and performs no response read. Measurement results are uncropped integer millidegrees Celsius and milli-%RH.
 
+## Heater readings are not ambient readings
+
+A heater pulse converts while the heater is still on. The `Measurement` it
+returns therefore describes the heated sensor rather than the surrounding air.
+How the two differ is heater physics, which this repository does not retain,
+model, bound, or correct.
+
+`heater_pulse` and `measure` share the `Measurement` type, so nothing in the
+type system prevents one being used where the other is meant. Use `measure` for
+a reading taken with the heater off. What either reading implies about the
+surrounding air is a system-calibration question this repository does not
+answer.
+
 ## Platform support
 
 The crate is `no_std`, uses abstract `embedded-hal-async` I2C and delay resources, allocates no memory, and forbids unsafe code. The caller owns those resources, power-up timing, scheduling, retries, recovery policy, and heater cadence or duty-cycle policy. The driver owns the serial, measurement, heater-pulse, and soft-reset commands' execution waits. Model conformance covers the serial-number read, T/RH measurement at high, medium, and low repeatability, all six heater pulses, and soft-reset abort/recovery; no physical-device claim is made.

@@ -115,6 +115,17 @@
   classify a crate for a registry neither package enters, and the model's
   dependency-free posture reads more clearly by omission.
 
+### Documentation
+
+- Disclosed that the measurement returned by a heater pulse is taken while the
+  heater is energized. `heater_pulse` and `measure` share the `Measurement`
+  type, so nothing in the type system records whether a result came from a
+  heater-on or heater-off conversion. How far the two differ is heater physics
+  and stays unretained and unclaimed, as does what either result implies about
+  the surrounding air — that is a system-calibration question outside this
+  repository. Documented on the operation, in the package README, and in the
+  root README.
+
 ### Known issues
 
 - Model conformance covers every current public device operation; no operation
