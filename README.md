@@ -21,6 +21,11 @@ It does not own board topology; concrete bus/GPIO/power resources; sampling cade
 - Transport: abstract async I2C and delay resources
 - Rust: `1.92.0` on the pinned `1.92.0` toolchain
 - Runtime posture: `no_std`, no allocation, and no unsafe code
+- Verified targets: `thumbv7em-none-eabihf` and `thumbv6m-none-eabi`, compiled
+  by the local gate. The crate is target-agnostic above its abstract
+  `embedded-hal-async` resources; these two are the compilation evidence that
+  exists, not a statement that other targets are unsupported. Host compilation
+  alone establishes nothing about either.
 - Supported operations: implementation-tested serial-number read, one-shot T/RH
   measurement at high, medium, or low repeatability, all six long/short heater
   pulses, and soft reset over abstract async I2C with the device-required
@@ -50,6 +55,24 @@ The independent model package is documented in [its README](crates/sht45-model/R
 ## Verification
 
 Run `./scripts/ci.sh`. This local gate is authoritative; no hosted workflow is assumed.
+
+It checks formatting, the declared version and publication lock across all three
+manifests, lints with warnings denied, tests, compilation for the verified
+bare-metal targets, documentation, and construction and inspection of the
+driver's package archive. Every cargo invocation uses `--locked`, so the
+committed `Cargo.lock` is the resolved dependency set rather than whatever
+resolves on the day.
+
+A check that cannot run says so, and distinguishes why: `skipped` when a
+prerequisite is absent, such as an uninstalled target or cargo-deny, and
+`indeterminate` when a prerequisite exists but could not be interrogated, such
+as a `rustup target list` that fails. Neither is a passed check.
+
+The gate runs over uncommitted work. When the tree is dirty — or when its state
+cannot be read, because cargo inspects the repository without the git CLI — the
+package checks cover the working tree instead of the committed one and say so.
+The release process runs from a clean checkout with git present, where no such
+notice can appear.
 
 ## License
 
