@@ -94,12 +94,12 @@ verified.
 Run from a clean checkout of the commit to be released.
 
 **1. Settle the changelog.** Move accumulated `## Unreleased` entries under a
-`## X.Y.Z - YYYY-MM-DD` heading, dated in UTC. Preserve unresolved known
-limitations; do not quietly drop them. Mark breaking changes `**Breaking:**`.
-A release introducing a substantial capability carries a value statement
-immediately below the heading saying why it was added, which limitation it
-addresses, what value it provides, and what it costs. A list of APIs is not a
-value statement.
+`## X.Y.Z - YYYY-MM-DD` heading, dated in UTC. The section is a caller-facing
+record, not a development diary. Preserve unresolved known limitations; do not
+quietly drop them. Mark breaking changes `**Breaking:**`. A release introducing
+a substantial capability carries a value statement immediately below the heading
+saying why it was added, which limitation it addresses, what value it provides,
+and what it costs. A list of APIs is not a value statement.
 
 **2. Set the version.** Update all three manifests and `expected_version` in
 `xtask/ci.ron`, then `cargo update --workspace` so `Cargo.lock` matches.
@@ -145,10 +145,10 @@ cargo xtask ci
 ```
 
 Record the toolchain, host, and any skipped or indeterminate check. Neither is a
-passed check. Also retain the line, function, and region summaries reported for
-`target/coverage/unit.json` and `target/coverage/conformance.json`; they measure
-software execution only and create no physical evidence. On a clean tree the
-package checks print no notice; a notice here means step 5 was not finished.
+passed check. Retain the printed `ci summary`, including the line, function, and
+region totals (and `target/coverage/summary.txt`); they measure software
+execution only and create no physical evidence. On a clean tree the package
+checks print no notice; a notice here means step 5 was not finished.
 
 **7. Inspect the artifact.**
 
@@ -175,7 +175,10 @@ cargo publish --locked --manifest-path crates/sht4x/Cargo.toml
 ```
 
 **10. Create the GitHub Release** on that tag, containing the corresponding
-changelog section. **Mark it as a prerelease whenever the version has a
+changelog section and the coverage section of the retained `ci summary`, so a
+tagged version discloses how complete its host-only evidence was. The
+model-conformance totals are the relevant completeness figure; unit-test totals
+are a different layer. **Mark it as a prerelease whenever the version has a
 prerelease component.** The tag and the packaged version must match exactly
 apart from the leading `v`.
 

@@ -56,13 +56,13 @@ came from an attacker or from a failing connector.
 ## What is out of scope
 
 - Physical access, probing, glitching, or bus tampering.
-- Confidentiality or authenticity of the I2C bus itself. The SHT45 offers
-  neither, and this driver does not add them.
+- Confidentiality or authenticity of the I2C bus itself. The SHT4x family
+  offers neither, and this driver does not add them.
 - Concrete bus, power, clock, or GPIO implementations, which belong to
   integration.
 - Application-level policy: retry, escalation, rate limiting, heater duty-cycle
   limiting, and thermal safety are the caller's, not the driver's.
-- Vulnerabilities in the SHT45 device or its datasheet, which are the vendor's.
+- Vulnerabilities in an SHT4x device or its datasheet, which are the vendor's.
 
 A report we cannot act on is still worth filing; we will say so and, where we
 can, name the layer that owns it.

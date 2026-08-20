@@ -1,4 +1,4 @@
-# Sensirion SHT45 driver contract
+# Sensirion SHT4x driver contract
 
 ## Responsibility
 
@@ -20,11 +20,11 @@ Refine this list when implementation creates review-blocking invariants; do not 
 
 ## Sources and device propositions
 
-### Widening to the SHT4x family
+### Family identifiers and supersession
 
-The supported device set is being widened from the SHT45-AD1B alone to the
-SHT40, SHT41, SHT43, and SHT45. The propositions below were retained while the
-scope was one part, and their identifiers say so.
+The supported device set is the SHT40, SHT41, SHT43, and SHT45. Many
+propositions below were retained while the scope was the SHT45-AD1B alone, and
+their identifiers say so.
 
 Identifiers are not rewritten. Section 10.2 requires an identifier to name one
 stable referent, never to be reused or redefined, and to remain resolvable after
@@ -42,28 +42,19 @@ for the SHT45-AD1B only**, whatever the package is named. The package name
 carries the family identifier; the propositions carry the claims, and only they
 decide what is supported.
 
-### Outstanding reads for the widening
-
-This decision work bounds what the widening needs and names the dependent work
-it enables. Each item is a read of the already-pinned datasheet — no new source
-is required — and none is a claim until it is performed and recorded:
-
-| Needed | Enables | Status |
-| --- | --- | --- |
-| Question | Settled by | Outcome |
-| --- | --- | --- |
-| The per-part I2C addresses | Tables 11 and 12 | The address follows part-number position 7, not the sensor model. `SHT4X-PART-NOM-001`, `SHT4X-I2C-ADDR-001`. |
-| Whether Table 8's commands, Table 5's timings, and section 4.6's conversion are stated per part | Bounded search of the pinned document | They are stated for the SHT4x without part qualification. `SHT4X-FAMILY-SCOPE-001`. |
-| Whether any driver-observable behavior varies by accuracy grade | Same search | None is declared. Accuracy is a specification of a reading, not a step in producing one. `SHT4X-ACC-001`. |
-
-The widening therefore needs no sensor-model parameter. It needs a
+The datasheet reads that bound the family set are settled:
+`SHT4X-PART-NOM-001` and `SHT4X-I2C-ADDR-001` (address follows part-number
+position 7, not the sensor model), `SHT4X-FAMILY-SCOPE-001` (commands, timings,
+and conversion are stated for the SHT4x without part qualification), and
+`SHT4X-ACC-001` (accuracy specifies a reading rather than a step in producing
+one). The driver therefore has no sensor-model parameter. It needs a
 caller-supplied address, constrained to the three documented values, and honest
 disclosure of what the evidence covers.
 
-What the search does not settle is device behavior. `SHT4X-FAMILY-SCOPE-001`
-records what the document declares; it creates no physical claim, no validation
-assignment, and no release block, and it does not make the existing
-model-conformance evidence cover a part it was never run against.
+`SHT4X-FAMILY-SCOPE-001` records what the document declares; it creates no
+physical claim, no validation assignment, and no release block, and it does not
+make the existing model-conformance evidence cover a part it was never run
+against.
 
 Retained propositions are limited to facts consumed by the implemented driver
 operations or the independent model's soft-reset and heater-pulse behavior. They
@@ -293,6 +284,12 @@ validation assignment.
   conformance package's public driver/model adapter check, with independently
   asserted command, address, and maximum-delay mappings. This covers every
   current public device operation.
+  Completeness of that software evidence — how much of the production driver
+  and model the checks executed — is measured by the local gate as
+  model-conformance coverage. That measurement is recorded with the run that
+  produced it; it is not a retained proposition, not a threshold, and not
+  physical evidence. Unit-test coverage of the same files is the
+  implementation-tested layer and does not strengthen this one.
   It does not cover every supported *device*. The check runs against the
   independent model, and the model implements one behavior — the one the
   datasheet states for the SHT4x without part qualification, per

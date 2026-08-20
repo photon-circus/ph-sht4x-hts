@@ -19,8 +19,11 @@
         manifest: "crates/sht4x/Cargo.toml",
     ),
     supported_targets: [
-        "thumbv7em-none-eabihf",
         "thumbv6m-none-eabi",
+        "thumbv7m-none-eabi",
+        "thumbv7em-none-eabihf",
+        "thumbv8m.main-none-eabihf",
+        "riscv32imac-unknown-none-elf",
     ],
     coverage: (
         unit_packages: [
