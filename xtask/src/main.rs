@@ -383,8 +383,9 @@ fn run_ci() -> Result<(), String> {
         summary.skip("dependencies and licenses", "cargo-deny is not installed");
     }
 
+    let completion = require_complete_summary(&summary);
     emit_ci_summary(&summary);
-    Ok(())
+    completion
 }
 
 fn run_fmt() -> Result<(), String> {
@@ -458,6 +459,12 @@ fn format_ci_summary(summary: &CiSummary) -> String {
             failed.name
         )
         .unwrap();
+    } else if skipped != 0 || indeterminate != 0 {
+        writeln!(
+            out,
+            "result  incomplete  {passed} passed, {skipped} skipped, {indeterminate} indeterminate"
+        )
+        .unwrap();
     } else {
         writeln!(
             out,
@@ -466,6 +473,23 @@ fn format_ci_summary(summary: &CiSummary) -> String {
         .unwrap();
     }
     out
+}
+
+fn require_complete_summary(summary: &CiSummary) -> Result<(), String> {
+    let skipped = count_status(&summary.checks, |status| {
+        matches!(status, CheckStatus::Skipped(_))
+    });
+    let indeterminate = count_status(&summary.checks, |status| {
+        matches!(status, CheckStatus::Indeterminate(_))
+    });
+
+    if skipped == 0 && indeterminate == 0 {
+        Ok(())
+    } else {
+        Err(format!(
+            "CI evidence is incomplete: {skipped} skipped and {indeterminate} indeterminate checks"
+        ))
+    }
 }
 
 fn count_status(checks: &[CheckRecord], predicate: impl Fn(&CheckStatus) -> bool) -> usize {
@@ -739,14 +763,17 @@ fn validate_manifest_contents(
         ));
     }
 
-    if require_unpublished {
-        let publish_setting = package_field(contents, "publish");
-        if publish_setting.as_deref() != Some("false") {
-            return Err(format!(
-                "{relative_path} [package] must retain publish = false, found {}",
-                publish_setting.as_deref().unwrap_or("no publish key")
-            ));
-        }
+    let publish_setting = package_field(contents, "publish");
+    let expected_publish = if require_unpublished {
+        "false"
+    } else {
+        "[\"crates-io\"]"
+    };
+    if publish_setting.as_deref() != Some(expected_publish) {
+        return Err(format!(
+            "{relative_path} [package] must set publish = {expected_publish}, found {}",
+            publish_setting.as_deref().unwrap_or("no publish key")
+        ));
     }
 
     Ok(())
@@ -1285,8 +1312,12 @@ publish = true
         ));
         assert!(rendered.contains("crates/sht4x/src/lib.rs  lines 9/10 (90.00%)"));
         assert!(rendered.contains("report  target/coverage/unit.json"));
-        assert!(rendered.contains("result  passed  1 passed, 1 skipped, 1 indeterminate"));
+        assert!(rendered.contains("result  incomplete  1 passed, 1 skipped, 1 indeterminate"));
         assert!(!rendered.contains("result  failed"));
+        assert_eq!(
+            require_complete_summary(&summary),
+            Err("CI evidence is incomplete: 1 skipped and 1 indeterminate checks".to_owned())
+        );
     }
 
     #[test]
@@ -1756,12 +1787,12 @@ publish = true
             let error =
                 validate_manifest_contents("Cargo.toml", &manifest, TEST_EXPECTED_VERSION, true)
                     .unwrap_err();
-            assert!(error.contains("must retain publish = false"));
+            assert!(error.contains("must set publish = false"));
         }
     }
 
     #[test]
-    fn publication_check_can_be_disabled_by_policy() {
+    fn publication_check_requires_the_exact_crates_io_allow_list() {
         let manifest = format!(
             "[package]\nname = \"example\"\nversion = \"{TEST_EXPECTED_VERSION}\"\npublish = [\"crates-io\"]\n"
         );
@@ -1769,6 +1800,21 @@ publish = true
             validate_manifest_contents("Cargo.toml", &manifest, TEST_EXPECTED_VERSION, false,),
             Ok(())
         );
+
+        for publish_line in [
+            "",
+            "publish = true\n",
+            "publish = false\n",
+            "publish = [\"private\"]\n",
+        ] {
+            let manifest = format!(
+                "[package]\nname = \"example\"\nversion = \"{TEST_EXPECTED_VERSION}\"\n{publish_line}"
+            );
+            let error =
+                validate_manifest_contents("Cargo.toml", &manifest, TEST_EXPECTED_VERSION, false)
+                    .unwrap_err();
+            assert!(error.contains("must set publish = [\"crates-io\"]"));
+        }
     }
 
     #[test]

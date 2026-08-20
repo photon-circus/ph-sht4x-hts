@@ -9,7 +9,7 @@ Incubating unpublished async no_std Rust driver for the Sensirion SHT4x humidity
 > [!WARNING]
 > **Lifecycle:** Incubating — the responsibility is bounded and intended to become a supported driver. Compatibility follows the documented version and release policy, not lifecycle alone.
 > **Distribution:** Unpublished; the candidate version is `0.1.0-incubating.1` and the manifest sets `publish = false`.
-> **Model conformance:** The unpublished host-only conformance check covers the driver's serial-number read, one-shot T/RH measurement at all three repeatabilities, all six heater pulses, soft-reset abort/recovery, and every documented address, against the independent model. That model implements behavior the datasheet states for the SHT4x without part qualification, recorded as `SHT4X-FAMILY-SCOPE-001`; **no check has been executed against any physical part**, so coverage across the family rests on that documentary basis rather than on execution.
+> **Model conformance:** The unpublished host-only conformance check covers the driver's serial-number read, one-shot T/RH measurement at all three repeatabilities, all six heater pulses, soft-reset abort/recovery, and every documented address, against the independent model. That model implements behavior the datasheet states for the SHT4x without part qualification, recorded as `SHT4X-FAMILY-SCOPE-001`, plus a declared 10 ms serial guard adopted from Sensirion's current reference driver where the datasheet gives no duration; the guard is not a physical busy claim. **No check has been executed against any physical part**, so coverage across the family rests on that documentary basis rather than on execution.
 > **Physical evidence:** None. No reviewed physical-device evidence supports a physically observed or ph-hil-qualified claim.
 > Evidence and limitations apply only to named operations; publication does not imply hardware qualification.
 
@@ -59,12 +59,12 @@ well as from the repository.
 | --- | --- | --- |
 | Addressing | `SHT4X-PART-NOM-001`, `SHT4X-I2C-ADDR-001` | Takes the address from the caller as `Address::A`, `Address::B`, or `Address::C` for `0x44`, `0x45`, or `0x46`. The caller reads it off position 7 of the part number they ordered; it is not a function of the sensor model, so the driver never infers it and never scans the bus. |
 | Part coverage | `SHT4X-FAMILY-SCOPE-001`, `SHT4X-ACC-001` | Nothing branches on the sensor model. Accuracy grade is a specification of a reading rather than a step in producing one, so there is no grade-dependent processing and the driver makes no accuracy claim of its own. |
-| `read_serial_number` | `SHT45-SN-CMD-001`, `SHT45-CRC-001` | Writes the command, waits its execution time, then reads six bytes in a separate transaction and returns the transmission-order `u32`. |
+| `read_serial_number` | `SHT4X-SN-CMD-001`, `SHT4X-SN-WAIT-001`, `SHT45-CRC-001` | Writes the command, applies the conservative 10 ms wait used by Sensirion's current reference driver, then reads six bytes in a separate transaction and returns the transmission-order `u32`. The wait is not presented as a datasheet maximum. |
 | `measure` | `SHT45-MEAS-CMD-001`, `SHT45-MEAS-TIME-001`, `SHT45-MEAS-CONV-001` | Writes the repeatability-selected command, waits that repeatability's Table 5 **maximum** rather than its typical, then reads and converts six bytes. |
-| `heater_pulse` | `SHT45-HEAT-CMD-001`, `SHT45-HEAT-PWR-001`, `SHT45-HEAT-TIME-001`, `SHT45-HEAT-SEQ-001` | Writes the power- and duration-selected command, waits the complete pulse-plus-measurement bound, then reads one six-byte frame. |
+| `heater_pulse` | `SHT45-HEAT-CMD-001`, `SHT45-HEAT-PWR-001`, `SHT4X-HEAT-TIME-001`, `SHT45-HEAT-SEQ-001`, `SHT4X-HEAT-USE-001` | Writes the power- and duration-selected command, waits the inclusive 1.1 s or 0.11 s heater-on maximum, then reads one six-byte frame. The caller owns the documented operating constraints. |
 | `reset` | `SHT45-RST-CMD-001`, `SHT45-RST-TIME-001` | Writes the soft-reset command, waits the idle-time bound, and performs no response read. |
 | Every read frame | `SHT45-CRC-001` | Validates both CRC-8 bytes. A mismatch is an error and the driver does not retry. |
-| Device not ready | `SHT45-I2C-XFER-001` | The device NACKs a read header while it is busy, so a read that arrives before the required wait has elapsed surfaces as `Error::NoAcknowledge`. The driver does not retry. |
+| Device not ready | `SHT45-I2C-XFER-001` | The device NACKs a read header while a documented measurement or heater action is busy, so a premature read there surfaces as `Error::NoAcknowledge`. The datasheet defines no corresponding behavior during the serial reference interval. The driver does not retry. |
 
 Which heater command carries which power level is `SHT45-HEAT-PWR-001`: 200 mW,
 110 mW, or 20 mW, descending. Those are the datasheet's typical figures at
@@ -74,8 +74,14 @@ one supply voltage.
 Three consequences are worth stating plainly, because they shape how the driver
 is called.
 
-- Each operation blocks for its device-required wait, so a long heater pulse
-  holds the future for over a second (`SHT45-HEAT-TIME-001`).
+- Each operation holds its future across its complete requested wait, so a long
+  heater pulse requests a 1.1-second delay (`SHT4X-HEAT-TIME-001`), in addition
+  to transport and scheduler overhead.
+- These command futures are not cancellation-safe after their write may have
+  been acknowledged. Dropping one can leave an action in progress or a response
+  unread. Do not issue another command until integration has re-established a
+  known idle transaction state; soft reset is not claimed to discard an
+  already-completed unread response.
 - Conversion results are uncropped integer millidegrees Celsius and milli-%RH,
   so a reading outside 0–100 %RH is reported rather than clamped
   (`SHT45-MEAS-CONV-001`).
@@ -90,6 +96,13 @@ A heater pulse converts while the heater is still on (`SHT45-HEAT-SEQ-001`). The
 `Measurement` it returns therefore describes the heated sensor rather than the
 surrounding air. How the two differ is heater physics, which this repository
 does not retain, model, bound, or correct.
+
+Under `SHT4X-HEAT-USE-001`, total heater-on time must remain below 10% of
+sensor lifetime, the heater must only be operated below 65 °C ambient, sensor
+temperature must remain at or below 125 °C, and the supply must tolerate up to
+approximately 75 mA at the highest setting without resetting the sensor.
+Specifications do not apply while heating. The driver exposes these limits but
+does not enforce cadence, thermal policy, or supply design.
 
 `heater_pulse` and `measure` share the `Measurement` type, so nothing in the
 type system prevents one being used where the other is meant. Use `measure` for
@@ -107,9 +120,9 @@ Requires Rust `1.98.0`. The crate is `no_std`, allocates no memory, and forbids
 unsafe code (`#![forbid(unsafe_code)]` applies to this crate's source, not its
 transitive graph). It uses abstract `embedded-hal-async` I2C and delay
 resources. The caller owns those resources, power-up timing, scheduling,
-retries, recovery policy, and heater cadence or duty-cycle policy. The driver
-owns the serial, measurement, heater-pulse, and soft-reset commands' execution
-waits.
+retries, cancellation recovery, and heater cadence, duty-cycle, thermal, and
+supply policy. The driver owns the serial reference wait and the measurement,
+heater-pulse, and soft-reset commands' documented waits.
 
 The local gate compiles the driver in the release profile for `thumbv6m-none-eabi` (Cortex-M0, no
 atomics), `thumbv7m-none-eabi` (Cortex-M3, atomics, soft-float),

@@ -31,14 +31,19 @@ integration layer, not here, however useful it is.
 
 ## Toolchain and setup
 
-The workspace pins Rust `1.98.0` in `rust-toolchain.toml`. Install the coverage
-frontend once, then format and run the canonical gate:
+The workspace pins Rust `1.98.0`, its required components, and all five verified
+targets in `rust-toolchain.toml`. Install the two pinned Cargo tools once, then
+format and run the canonical gate:
 
 ```sh
-cargo install cargo-llvm-cov --locked # once, if it is not installed
+cargo install cargo-llvm-cov --version 0.8.7 --locked
+cargo install cargo-deny --version 0.20.2 --locked
 cargo xtask fmt
 cargo xtask ci
 ```
+
+The gate exits unsuccessfully when any check is skipped or indeterminate. A
+complete run is the only run whose final result is `passed`.
 
 `cargo xtask fmt` rewrites with rustfmt. The gate checks the same invocation
 and does not rewrite files.
@@ -111,9 +116,12 @@ Never describe host-model success as hardware support.
 
 ## Canonical validation
 
-`cargo xtask ci` is authoritative; no hosted workflow is assumed. Paste the
-printed `ci summary` — every check outcome and the recorded coverage metrics —
-into the pull-request evidence table, not the commands you intended to run.
+`cargo xtask ci` is the authoritative complete gate. When this repository is
+public, the bounded hosted `ci` workflow runs that same command for contributor
+feedback; its job is intentionally skipped while the repository is private.
+Paste the printed `ci summary` — every check outcome and the recorded coverage
+metrics — into the pull-request evidence table, not the commands you intended
+to run.
 The model-conformance coverage lines are the disclosure of how complete that
 host-only evidence is.
 

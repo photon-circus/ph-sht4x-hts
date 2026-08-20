@@ -42,7 +42,8 @@ been executed against a physical device of any model.
 | Behavior | Proposition | Model consequence |
 | --- | --- | --- |
 | Device identity | `SHT4X-I2C-ADDR-001` | One device at a 7-bit address the caller chooses from `0x44`, `0x45`, and `0x46`, the values the proposition retains: `at` takes any of the three, and `new` uses `0x44`. A transaction addressed elsewhere returns `WrongAddress`. |
-| Serial readout | `SHT45-SN-CMD-001` | A separate `0x89` write, then a six-byte read of two big-endian words with one CRC byte each. |
+| Serial readout | `SHT4X-SN-CMD-001` | A separate `0x89` write, then a six-byte read of two big-endian words with one CRC byte each. |
+| Serial reference wait | `SHT4X-SN-WAIT-001` | A read before the adopted 10 ms reference-driver guard is rejected as `SerialReadBeforeReferenceWait`, a model limitation rather than a modeled NACK. At the guard, making the frame available is a declared abstraction, not a physical completion claim. |
 | Serial persistence | `SHT45-I2C-XFER-001` | The explicit OTP serial survives other commands and is re-readable after another command write. |
 | Word integrity | `SHT45-CRC-001` | One CRC-8 byte per 16-bit word, derived independently of the driver. |
 | Measurement commands | `SHT45-MEAS-CMD-001` | `0xFD`, `0xF6`, and `0xE0` accepted; each yields the injected six-byte CRC frame. |
@@ -50,7 +51,7 @@ been executed against a physical device of any model.
 | One-shot deletion | `SHT45-MEAS-ONCE-001` | The frame is deleted after the first successful read; a second read returns `MeasurementDataUnavailable`. |
 | Busy read | `SHT45-I2C-XFER-001` | A read while busy is modeled as the device NACK, distinct from a model limitation. |
 | Heater commands | `SHT45-HEAT-CMD-001`, `SHT45-MEAS-ONCE-001` | All six bytes accepted, each returning the injected six-byte CRC frame; the frame is deleted after the first successful read on the same terms as a measurement. |
-| Heater timing | `SHT45-HEAT-TIME-001` | Long and short maximum busy frontiers, each including the trailing high-repeatability measurement. |
+| Heater timing | `SHT4X-HEAT-TIME-001` | Long and short maximum busy frontiers of 1.1 s and 0.11 s; each interval already includes the trailing high-repeatability measurement. |
 | Soft reset | `SHT45-RST-CMD-001`, `SHT45-RST-TIME-001`, `SHT45-RST-ABORT-001` | `0x94` accepted; the device stays busy for the whole 1 ms interval, then returns to idle with no payload. `SHT45-RST-TIME-001` gives that as a maximum; treating it as the exact frontier is a declared model abstraction. |
 | Reset abort | `SHT45-RST-ABORT-001` | Soft reset aborts a busy measurement or heater pulse and begins reset timing. |
 
@@ -62,9 +63,12 @@ without ticks returns `MissingMeasurementTicks` rather than inventing a value.
 
 ### Abstracted
 
-The serial command's execution time (`SHT45-SN-CMD-001`) is not modeled as a
-busy frontier, so the serial frame is available at the first read. The driver's
-wait for it is asserted by the conformance test rather than enforced here.
+The datasheet supplies no serial execution duration. `SHT4X-SN-WAIT-001`
+therefore records a conservative 10 ms vendor-reference guard rather than a
+device-busy frontier. Before that guard the model reports
+`SerialReadBeforeReferenceWait`, not `Busy`; at the guard, serial availability
+is a purpose-driven abstraction that lets conformance discriminate the adopted
+driver wait without claiming what silicon does during the interval.
 
 Heater power (`SHT45-HEAT-PWR-001`) is not modeled at all. Power is not
 observable at the transport boundary, so the model distinguishes the six
@@ -92,6 +96,10 @@ and never as a fabricated NACK or payload:
   `InvalidWriteLength`, separately from `UnsupportedCommand` for an unmodeled
   one-byte command. A read buffer that is not six bytes returns
   `InvalidReadLength`.
+- A serial read before the conservative reference-driver guard returns
+  `SerialReadBeforeReferenceWait`. The datasheet does not declare a physical
+  readiness or NACK frontier there, so this limitation must not be translated
+  into a modeled device response.
 - Writes while a measurement, heater, or reset is busy return `WriteWhileBusy`;
   nested soft reset returns the distinct `ResetWhileBusy`. Only the soft-reset
   abort of `SHT45-RST-ABORT-001` is declared, so every other busy write stays a

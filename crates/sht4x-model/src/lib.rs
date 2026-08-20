@@ -32,12 +32,15 @@ pub const HEATER_LONG_COMMANDS: [u8; 3] = [0x39, 0x2f, 0x1e];
 pub const HEATER_SHORT_COMMANDS: [u8; 3] = [0x32, 0x24, 0x15];
 const RESPONSE_LEN: usize = 6;
 
+// This is the conservative reference-driver wait from `SHT4X-SN-WAIT-001`,
+// not a modeled silicon busy frontier.
+const SERIAL_REFERENCE_WAIT_NS: u64 = 10_000_000;
 const HIGH_MEASUREMENT_NS: u64 = 8_300_000;
 const MEDIUM_MEASUREMENT_NS: u64 = 4_500_000;
 const LOW_MEASUREMENT_NS: u64 = 1_600_000;
 const SOFT_RESET_NS: u64 = 1_000_000;
-const LONG_HEATER_NS: u64 = 1_108_300_000;
-const SHORT_HEATER_NS: u64 = 118_300_000;
+const LONG_HEATER_NS: u64 = 1_100_000_000;
+const SHORT_HEATER_NS: u64 = 110_000_000;
 
 /// Errors for transactions outside the model's fidelity boundary.
 #[derive(Debug, PartialEq, Eq)]
@@ -52,7 +55,12 @@ pub enum Error {
     InvalidReadLength(usize),
     /// A read was attempted without a preceding command write.
     ReadBeforeCommand,
-    /// A measurement or reset read was attempted before its maximum completion time.
+    /// A serial read was attempted before the adopted reference-driver wait.
+    ///
+    /// The datasheet does not say what the device does in this interval, so
+    /// this is a model limitation rather than a modeled NACK or busy response.
+    SerialReadBeforeReferenceWait,
+    /// A measurement, heater, or reset read preceded its documented completion frontier.
     Busy,
     /// A command write was attempted while a device action was busy, outside model fidelity.
     WriteWhileBusy,
@@ -88,7 +96,9 @@ pub struct MeasurementTicks {
 
 #[derive(Clone, Copy)]
 enum PendingCommand {
-    Serial,
+    Serial {
+        not_before_ns: u64,
+    },
     Measurement {
         ready_at_ns: u64,
         ticks: MeasurementTicks,
@@ -209,7 +219,9 @@ impl Sht4xModel {
             SOFT_RESET_COMMAND => PendingCommand::Reset {
                 ready_at_ns: self.elapsed_ns.saturating_add(SOFT_RESET_NS),
             },
-            SERIAL_NUMBER_COMMAND => PendingCommand::Serial,
+            SERIAL_NUMBER_COMMAND => PendingCommand::Serial {
+                not_before_ns: self.elapsed_ns.saturating_add(SERIAL_REFERENCE_WAIT_NS),
+            },
             command @ (MEASURE_HIGH_COMMAND | MEASURE_MEDIUM_COMMAND | MEASURE_LOW_COMMAND) => {
                 let ticks = self
                     .measurement_ticks
@@ -244,7 +256,7 @@ impl Sht4xModel {
             command => return Err(Error::UnsupportedCommand(command)),
         };
 
-        let response_pending = matches!(self.pending, Some(PendingCommand::Serial))
+        let response_pending = matches!(self.pending, Some(PendingCommand::Serial { .. }))
             || matches!(
                 self.pending,
                 Some(PendingCommand::Measurement { ready_at_ns, .. }
@@ -272,7 +284,10 @@ impl Sht4xModel {
             return Err(Error::InvalidReadLength(response.len()));
         }
         match self.pending {
-            Some(PendingCommand::Serial) => {
+            Some(PendingCommand::Serial { not_before_ns }) => {
+                if self.elapsed_ns < not_before_ns {
+                    return Err(Error::SerialReadBeforeReferenceWait);
+                }
                 write_frame(response, [(self.serial >> 16) as u16, self.serial as u16]);
                 self.pending = None;
                 self.measurement_consumed = false;

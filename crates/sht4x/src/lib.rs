@@ -39,18 +39,19 @@ impl Address {
 }
 
 const SERIAL_NUMBER_COMMAND: u8 = 0x89;
-const SERIAL_NUMBER_DURATION_US: u32 = 10;
+// `SHT4X-SN-WAIT-001` adopts the current Sensirion reference driver's
+// conservative wait. The datasheet does not publish a serial completion bound,
+// so this is not a claimed device-busy frontier.
+const SERIAL_NUMBER_DURATION_US: u32 = 10_000;
 // Every response this driver reads is the same shape: two big-endian 16-bit
 // words, each followed by its CRC-8 byte.
 const RESPONSE_LEN: usize = 6;
 const SOFT_RESET_COMMAND: u8 = 0x94;
 const SOFT_RESET_DURATION_US: u32 = 1_000;
-// Each heater bound is the pulse itself plus the high-repeatability
-// measurement that runs before the data is available, per `SHT45-HEAT-TIME-001`
-// and `SHT45-HEAT-SEQ-001`. Dropping the trailing 8_300 would read the frame
-// before the device has it.
-const HEATER_LONG_DURATION_US: u32 = 1_100_000 + MEASUREMENT_HIGH_DURATION_US;
-const HEATER_SHORT_DURATION_US: u32 = 110_000 + MEASUREMENT_HIGH_DURATION_US;
+// `tHeater` includes the high-repeatability measurement performed before the
+// heater is switched off, per `SHT4X-HEAT-TIME-001`.
+const HEATER_LONG_DURATION_US: u32 = 1_100_000;
+const HEATER_SHORT_DURATION_US: u32 = 110_000;
 const MEASUREMENT_HIGH_DURATION_US: u32 = 8_300;
 const MEASUREMENT_MEDIUM_DURATION_US: u32 = 4_500;
 const MEASUREMENT_LOW_DURATION_US: u32 = 1_600;
@@ -64,8 +65,9 @@ pub enum Error<E> {
     /// The device was not ready or otherwise did not acknowledge the transfer.
     ///
     /// Per `SHT45-I2C-XFER-001` the device NACKs a read header while it is
-    /// busy, so this is the expected result of reading before the operation's
-    /// required wait has elapsed. The driver does not retry.
+    /// busy, so this is the expected result before the documented measurement
+    /// or heater frontier. The datasheet defines no corresponding behavior for
+    /// the serial reference-wait interval. The driver does not retry.
     NoAcknowledge(E),
     /// One of the two response words failed its CRC check.
     ///
@@ -138,7 +140,8 @@ pub enum Repeatability {
 /// device will dissipate.
 ///
 /// The driver selects the command byte. It does not meter delivered energy or
-/// limit duty cycle, which stay with the caller under `SHT45-HEAT-SEQ-001`.
+/// enforce the operating limits of `SHT4X-HEAT-USE-001`, including the
+/// less-than-10-percent duty cycle. Those remain caller responsibilities.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HeaterPower {
     /// Highest level, typically 200 mW at 3.3 V: `0x39` when long, `0x32` when short.
@@ -152,9 +155,9 @@ pub enum HeaterPower {
 /// Duration selected for one bounded heater pulse.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HeaterDuration {
-    /// Long pulse: 1.1 s heating followed by a high-repeatability measurement.
+    /// Long operation: maximum 1.1 s, including the final high-repeatability measurement.
     Long,
-    /// Short pulse: 0.11 s heating followed by a high-repeatability measurement.
+    /// Short operation: maximum 0.11 s, including the final high-repeatability measurement.
     Short,
 }
 
@@ -168,6 +171,16 @@ pub struct Measurement {
 }
 
 /// An SHT4x connected to abstract asynchronous I2C and delay resources.
+///
+/// # Cancellation safety
+///
+/// Command futures are not cancellation-safe after their I2C write may have
+/// been acknowledged. Dropping one can leave an operation in progress or a
+/// completed response unread, and this driver retains no in-flight state after
+/// the future is dropped. Do not issue another command through recovered
+/// resources until integration has re-established a known idle transaction
+/// state. Soft reset is documented to abort an action still in progress, but
+/// is not claimed to discard an already-completed unread response.
 pub struct Sht4x<I2C, DELAY> {
     address: Address,
     i2c: I2C,
@@ -196,10 +209,12 @@ impl<I2C, DELAY> Sht4x<I2C, DELAY> {
 
     /// Read the device's 32-bit transmission-order serial number.
     ///
-    /// Per `SHT45-SN-CMD-001` this is a command write, a wait for the command's
-    /// execution time, and then a *separate* six-byte read — not a combined
-    /// `write_read`. Both response words are CRC-validated under
-    /// `SHT45-CRC-001`.
+    /// Per `SHT4X-SN-CMD-001` this is a command write and then a *separate*
+    /// six-byte read — not a combined `write_read`. Between them the driver
+    /// applies the conservative 10 ms Sensirion-reference wait recorded by
+    /// `SHT4X-SN-WAIT-001`; that is an interoperability policy, not a
+    /// datasheet-stated device-busy maximum. Both response words are
+    /// CRC-validated under `SHT45-CRC-001`.
     ///
     /// For an SHT43 this serial is the key its ISO/IEC 17025 calibration
     /// certificate is filed under (`SHT4X-SHT43-CAL-001`). Retrieving or
@@ -301,11 +316,14 @@ impl<I2C, DELAY> Sht4x<I2C, DELAY> {
     /// either reading implies about the surrounding air is a system-calibration
     /// question this repository does not answer.
     ///
-    /// The caller owns application-level heater policy, including pulse cadence and
-    /// duty-cycle limiting. This operation owns the selected command's complete
-    /// device-required wait and response read: once the command write is
-    /// acknowledged it does not return until that wait has elapsed — over one
-    /// second for a long pulse. A write that fails returns immediately, without
+    /// The caller owns application-level heater policy, including the operating
+    /// limits recorded by `SHT4X-HEAT-USE-001`: total heater-on time over the
+    /// sensor's lifetime must remain below 10 percent; the heater must only be
+    /// operated below 65 °C ambient; sensor temperature must remain at or below
+    /// 125 °C; specifications are invalid while heating; and the supply must
+    /// tolerate up to approximately 75 mA at the highest setting. When driven
+    /// to completion, this operation owns the selected command's complete wait
+    /// and response read. A write that fails returns immediately, without
     /// waiting or reading.
     pub async fn heater_pulse<E>(
         &mut self,

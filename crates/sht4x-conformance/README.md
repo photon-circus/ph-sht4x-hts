@@ -19,17 +19,19 @@ comparison establishes.
 
 | Public operation | Propositions under comparison | Discriminating check |
 | --- | --- | --- |
-| Addressing | `SHT4X-I2C-ADDR-001` | Every documented address is exercised end to end, and a driver built for one address against a model built for another must surface as the model's `WrongAddress` through the driver's public error path. |
-| `read_serial_number` | `SHT45-SN-CMD-001`, `SHT45-CRC-001` | Unequal serial words distinguish transmission order; an adapter-corrupted frame must surface as the driver's CRC error. |
+| Addressing | `SHT4X-I2C-ADDR-001` | Every documented address is supplied to the driver alongside an independently literal model/bus address, and a driver built for one address against a model built for another must surface as the model's `WrongAddress` through the driver's public error path. |
+| `read_serial_number` | `SHT4X-SN-CMD-001`, `SHT4X-SN-WAIT-001`, `SHT45-CRC-001` | The command, 10 ms vendor-reference wait, and address are asserted as independent literals; skipping the wait reaches the model's explicit `SerialReadBeforeReferenceWait` limitation rather than a fabricated device NACK. Unequal serial words distinguish transmission order, and an adapter-corrupted frame must surface as the driver's CRC error. |
 | `measure` | `SHT45-MEAS-CMD-001`, `SHT45-MEAS-TIME-001`, `SHT45-MEAS-CONV-001` | Each repeatability's command byte and maximum-delay frontier are asserted independently of the driver, and injected ticks are compared against the decoded public millidegree and milli-%RH result. |
-| `heater_pulse` | `SHT45-HEAT-CMD-001`, `SHT45-HEAT-TIME-001`, `SHT45-MEAS-CONV-001` | All six power and duration selections, each with its own asserted command byte and long or short wait, and the same injected-tick to decoded-result comparison. |
+| `heater_pulse` | `SHT45-HEAT-CMD-001`, `SHT4X-HEAT-TIME-001`, `SHT45-MEAS-CONV-001` | All six power and duration selections, each with its own asserted command byte and inclusive long or short wait, and the same injected-tick to decoded-result comparison. |
 | `reset` | `SHT45-RST-CMD-001`, `SHT45-RST-TIME-001`, `SHT45-RST-ABORT-001`, `SHT45-I2C-XFER-001` | Reset aborts an in-flight measurement or long heater pulse and routes the driver's delay into model time. Serial recovery afterwards rests on the OTP serial surviving, which is `SHT45-I2C-XFER-001`, not on the reset propositions. |
 | Every read frame | `SHT45-CRC-001` | The driver's and the model's CRC are separately derived, so a sweep over all 65,536 words is what establishes they agree rather than a shared implementation. |
 
 Delay advancement is shared with the model, so the driver's requested wait is
 the input that moves the model's clock. A no-op delay provider therefore leaves
-the model busy and fails through the driver's public error path; those no-op
-cases are deliberate discriminators, not shortcuts.
+measurement, heater, or reset behavior busy, and leaves serial before its
+reference-driver guard. The first case surfaces as a modeled device NACK; the
+serial case remains a distinguishable model limitation. Those no-op cases are
+deliberate discriminators, not shortcuts.
 
 Two checks guard the adapter itself rather than the driver: a transaction the
 model domain does not cover must be rejected instead of answered, and a model

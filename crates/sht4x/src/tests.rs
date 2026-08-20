@@ -165,7 +165,7 @@ fn every_documented_address_is_used_on_the_bus() {
             *events.borrow(),
             vec![
                 Event::Write(bits, vec![SERIAL_NUMBER_COMMAND]),
-                Event::DelayNs(10_000),
+                Event::DelayNs(10_000_000),
                 Event::Read(bits, 6),
             ]
         );
@@ -230,22 +230,22 @@ fn measures_and_converts_both_words() {
 #[test]
 fn runs_each_heater_pulse_with_the_required_command_and_delay() {
     for (power, duration, command, delay_ns) in [
-        (HeaterPower::High, HeaterDuration::Long, 0x39, 1_108_300_000),
+        (HeaterPower::High, HeaterDuration::Long, 0x39, 1_100_000_000),
         (
             HeaterPower::Medium,
             HeaterDuration::Long,
             0x2f,
-            1_108_300_000,
+            1_100_000_000,
         ),
-        (HeaterPower::Low, HeaterDuration::Long, 0x1e, 1_108_300_000),
-        (HeaterPower::High, HeaterDuration::Short, 0x32, 118_300_000),
+        (HeaterPower::Low, HeaterDuration::Long, 0x1e, 1_100_000_000),
+        (HeaterPower::High, HeaterDuration::Short, 0x32, 110_000_000),
         (
             HeaterPower::Medium,
             HeaterDuration::Short,
             0x24,
-            118_300_000,
+            110_000_000,
         ),
-        (HeaterPower::Low, HeaterDuration::Short, 0x15, 118_300_000),
+        (HeaterPower::Low, HeaterDuration::Short, 0x15, 110_000_000),
     ] {
         let (i2c, delay, events) = fake([0xbe, 0xef, 0x92, 0xbe, 0xef, 0x92]);
         let mut sensor = Sht4x::new(Address::A, i2c, delay);
@@ -327,7 +327,7 @@ fn surfaces_heater_read_errors_after_the_required_wait() {
             *events.borrow(),
             vec![
                 Event::Write(Address::A.bits(), vec![0x24]),
-                Event::DelayNs(118_300_000),
+                Event::DelayNs(110_000_000),
                 Event::Read(Address::A.bits(), 6),
             ]
         );
@@ -373,7 +373,7 @@ fn reads_serial_with_two_transactions_and_validates_crc() {
         *events.borrow(),
         vec![
             Event::Write(Address::A.bits(), vec![SERIAL_NUMBER_COMMAND]),
-            Event::DelayNs(10_000),
+            Event::DelayNs(10_000_000),
             Event::Read(Address::A.bits(), 6),
         ]
     );

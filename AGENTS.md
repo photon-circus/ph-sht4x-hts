@@ -39,9 +39,14 @@ Things that are expensive to rediscover and cheap to get subtly wrong.
   separately: the CRC is deliberately a bit-at-a-time shift register in the
   driver and a nibble-table reduction in the model. Do not "simplify" them into
   one shape, and do not edit either side merely to make a comparison pass.
-- **The heater waits are composite.** `HEATER_LONG_DURATION_US` is the pulse
-  plus the trailing high-repeatability measurement. Dropping the `8_300` reads
-  the frame before the device has it, and no unit test would obviously say why.
+- **The heater waits are inclusive.** `tHeater` already contains the trailing
+  high-repeatability measurement, so the complete long and short maxima are
+  1.1 s and 0.11 s under `SHT4X-HEAT-TIME-001`. Adding another 8.3 ms
+  double-counts the measurement.
+- **The serial wait is reference-driver policy, not a busy frontier.**
+  `SHT4X-SN-WAIT-001` adopts Sensirion's current 10 ms software wait because the
+  datasheet publishes no serial execution duration. The model rejects an
+  earlier read as an explicit limitation; it must not report a fabricated NACK.
 - **A power level is not a duration, and the wattages are typical.**
   `SHT45-HEAT-CMD-001` groups the six heater bytes by duration;
   `SHT45-HEAT-PWR-001` binds each to a power. Both are needed to justify the
@@ -67,9 +72,10 @@ Things that are expensive to rediscover and cheap to get subtly wrong.
 properties: formatting, lifecycle-lock, lints, tests in both the dev and
 release profiles, host coverage summaries, release compilation of verified
 targets, documentation, and package construction. It prints a final summary of
-every check and the recorded coverage metrics. Report skipped and indeterminate
-checks as such. None of those results is silicon behavior, physical timing, or
-hardware support. When quoting coverage, use the model-conformance totals to
+every check and the recorded coverage metrics. Skipped or indeterminate checks
+make the gate incomplete and its command unsuccessful. None of those results is
+silicon behavior, physical timing, or hardware support. When quoting coverage,
+use the model-conformance totals to
 describe host-only evidence completeness. Unit-test totals describe the
 implementation-tested layer. Do not freeze either figure in a README or badge.
 

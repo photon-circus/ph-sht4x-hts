@@ -18,6 +18,17 @@ The supported device set is the SHT40, SHT41, SHT43, and SHT45 at any documented
 
 Refine this list when implementation creates review-blocking invariants; do not inventory hypothetical behavior.
 
+## Cancellation and recovery
+
+The async command futures are not cancellation-safe after their command write
+may have been acknowledged. Dropping a future can leave an action in progress
+or a completed response unread, while the driver retains no in-flight state.
+The caller must not issue another command until integration has re-established
+a known idle transaction state. `SHT45-RST-ABORT-001` supports soft-reset abort
+only while an action remains in progress; no retained source establishes that
+soft reset discards an already-completed unread response, so reset is not
+claimed as universal cancellation recovery.
+
 ## Sources and device propositions
 
 ### Family identifiers and supersession
@@ -67,6 +78,13 @@ retrieved 2026-08-19, 1,049,911 bytes, SHA-256
 Redistribution of the vendor PDF is not claimed; the PDF is not committed to
 this repository. Older SHT4x PDF revisions are not co-authority.
 
+Two conservative software waits are also compared with Sensirion's current
+official generated driver, `Sensirion/embedded-i2c-sht4x`, commit
+`1b6d7148a704618ff5fdedf3b13247f5cdc3f5e5`, file `sht4x_i2c.c`, retrieved
+2026-08-20. That implementation is retained as vendor software guidance, not
+as proof that the device remains busy for every instant of the wait:
+https://github.com/Sensirion/embedded-i2c-sht4x/blob/1b6d7148a704618ff5fdedf3b13247f5cdc3f5e5/sht4x_i2c.c.
+
 - `SHT4X-PART-NOM-001` — An SHT4x orderable part number encodes its properties
   positionally (Table 11). Position 5 is the accuracy grade: `0` base, `1`
   intermediate, `5` best, `3` ISO 17025 certified — the digit that makes a part
@@ -93,13 +111,30 @@ this repository. Older SHT4x PDF revisions are not co-authority.
   narrower reading than Table 11 supports: those addresses belong to part-number
   position 7 across the family, not to the SHT40. `SHT4X-I2C-ADDR-001` records
   the family fact; this record remains true of the SHT45-AD1B alone.
-- `SHT45-SN-CMD-001` — The serial number is read with command byte `0x89` as
-  two 16-bit words, each followed by an 8-bit CRC; the response length
-  including CRC is 6 bytes, and the command duration is 0.01 ms (Table 8,
-  section 4.7). Evidence state: supported.
-  Local consequence: the driver issues `write([0x89])`, waits at least 0.01 ms
-  through an abstract async delay resource, and then issues a separate 6-byte
-  `read`; `0x89` is not the I2C read address byte.
+- `SHT45-SN-CMD-001` — *(Superseded by `SHT4X-SN-CMD-001` and
+  `SHT4X-SN-WAIT-001`; retained so existing citations resolve.)* The original
+  record combined the supported `0x89` command and six-byte CRC frame with a
+  claimed 0.01 ms command duration attributed to Table 8 and section 4.7.
+  Reinspection of the pinned datasheet found no serial execution duration in
+  either location. Figure 1's `wait_seconds(0.01)` follows high-repeatability
+  measurement command `0xFD`; it is a 10 ms measurement example, not a 0.01 ms
+  serial duration. Evidence state: command and frame supported; timing claim
+  withdrawn.
+- `SHT4X-SN-CMD-001` — Serial number readout uses command byte `0x89` and
+  returns two 16-bit words, each followed by an 8-bit CRC, for a six-byte
+  response (Table 8, section 4.7). Evidence state: supported. Driver
+  requirement: issue `write([0x89])` and then a separate six-byte `read`;
+  `0x89` is not the I2C read address byte.
+- `SHT4X-SN-WAIT-001` — The pinned datasheet supplies no execution duration
+  for serial command `0x89`. Sensirion's current official generated driver
+  waits 10,000 µs between the acknowledged write and the read
+  (`sht4x_i2c.c`, lines 425–437 at the pinned commit above). Evidence state:
+  supported as vendor reference-driver sequencing, not as a datasheet maximum
+  or a physical busy frontier. Driver requirement: apply that conservative
+  10,000 µs wait through the abstract delay resource. Model consequence: a
+  read before that adopted guard is an explicit model limitation, not a
+  fabricated device NACK; at or after the guard, the serial frame is available
+  under a declared purpose-driven abstraction.
 - `SHT45-CRC-001` — For each 16-bit read word, CRC-8 uses polynomial `0x31`,
   initialization `0xFF`, no input/output reflection, and final XOR `0x00`;
   the example is `CRC(0xBEEF) = 0x92` (Table 7, section 4.4). Evidence state:
@@ -193,14 +228,23 @@ this repository. Older SHT4x PDF revisions are not co-authority.
   delivered energy, duty-cycle limiting, and watt metering remain outside this
   repository regardless.
 
-- `SHT45-HEAT-TIME-001` — The maximum heater time is 1.1 s for a long pulse and
-  0.11 s for a short pulse, followed by the high-repeatability measurement
-  maximum of 8.3 ms (`tHeater`, `tMEAS,h`, Table 5). Typical pulse widths and
-  watt figures are not completion bounds. Evidence state: supported. Driver
-  requirement: the heater-pulse operation waits 1_108_300 µs or 118_300 µs
-  before its single six-byte read; the independent model returns `Busy` before the
-  corresponding frontier and makes the injected six-byte frame available at
-  that frontier.
+- `SHT45-HEAT-TIME-001` — *(Superseded by `SHT4X-HEAT-TIME-001`; retained so
+  existing citations resolve.)* The original record added the 8.3 ms
+  high-repeatability measurement maximum to the 1.1 s/0.11 s `tHeater`
+  maxima. Table 8 and section 4.9 instead place the trailing measurement inside
+  the heater-on interval: measurement occurs while the heater remains on, then
+  the heater switches off and data becomes available. The original
+  1,108,300/118,300 µs interpretation therefore counted that measurement
+  twice. Evidence state: withdrawn.
+- `SHT4X-HEAT-TIME-001` — `tHeater` is the complete heater-on interval,
+  including the high-repeatability measurement immediately before switch-off.
+  Its maximum is 1.1 s for a long operation and 0.11 s for a short operation
+  (`tHeater`, Table 5; Table 8; section 4.9). Sensirion's current official
+  generated driver independently uses 1,100 ms and 110 ms for the six heater
+  commands (`sht4x_i2c.c`, lines 288–415 at the pinned commit above). Evidence
+  state: supported. Driver requirement: wait 1,100,000 µs or 110,000 µs before
+  the single six-byte read. Model consequence: return `Busy` before the
+  corresponding frontier and make the injected frame available at it.
 - `SHT45-HEAT-SEQ-001` — The heater sequence is heater on, timer expiry,
   high-repeatability measurement while the heater remains on, heater off, then
   data availability; there is no dedicated heater-off command (§4.9). Evidence
@@ -208,6 +252,16 @@ this repository. Older SHT4x PDF revisions are not co-authority.
   limiting, and watt metering remain outside this repository; soft reset
   aborts heater activity through `SHT45-RST-ABORT-001`, and other writes while
   heater-busy remain outside model fidelity.
+
+- `SHT4X-HEAT-USE-001` — Section 4.9 and Table 9 constrain heater use: total
+  heater-on time must remain below 10% of sensor lifetime, specifications are
+  not valid while heating, sensor temperature must stay at or below 125 °C,
+  and the heater must only be operated below 65 °C ambient. The highest setting
+  may draw up to approximately 75 mA, so inadequate supply delivery can reset
+  the sensor.
+  Evidence state: supported. Local consequence: the public API exposes these
+  limits, but cadence, duty-cycle accounting, thermal policy, and supply design
+  remain integration responsibilities and are not enforced by the driver.
 
 - `SHT4X-ACC-001` — Measurement accuracy varies across the family by the
   accuracy grade at part-number position 5: base, intermediate, best, and the
@@ -252,7 +306,7 @@ this repository. Older SHT4x PDF revisions are not co-authority.
   outside this repository — as system calibration and product-level accuracy
   already are. The driver applies no per-device correction. What it does supply
   is the identifying serial number, through the operation recorded by
-  `SHT45-SN-CMD-001`, which is the key the certificate is filed under.
+  `SHT4X-SN-CMD-001`, which is the key the certificate is filed under.
   Omitting the certificate introduces no error the driver could otherwise have
   corrected: the certificate refines the stated accuracy of a reading, it does
   not change how the reading is converted.
@@ -269,21 +323,25 @@ validation assignment.
 
 - Implementation-tested: serial-number, T/RH measurement, and heater-pulse
   sequencing, response decoding, CRC validation, integer conversion, and error mapping
-  through a scripted abstract I2C fake, including all six heater command bytes
-  and both complete heater waits, plus soft-reset write sequencing, 1000 µs
-  delay, and I2C/NACK error mapping. This does not establish model conformance,
-  device behavior, physical timing, or heater duty-cycle policy.
+  through a scripted abstract I2C fake, including the 10 ms serial reference
+  wait, all six heater command bytes and both complete heater waits, plus
+  soft-reset write sequencing, 1000 µs delay, and I2C/NACK error mapping. This
+  does not establish model conformance, device behavior, physical timing, or
+  heater duty-cycle policy.
 - Model-only: the independent model covers soft reset while idle, measuring, or
   heating, measurement/heater abort, the 1 ms reset-busy frontier, heater and
-  measurement busy frontiers, one-shot response deletion, and return to idle
-  while preserving the explicit OTP serial. This does not establish driver
-  conformance or device behavior.
+  measurement busy frontiers, the explicit limitation before the adopted
+  serial reference wait, one-shot response deletion, and return to idle while
+  preserving the explicit OTP serial. The serial limitation is not a modeled
+  NACK. This does not establish driver conformance or device behavior.
 - Model-conformant: serial-number read, T/RH measurement at high, medium, and
   low repeatability, all six heater pulses, soft-reset abort/recovery, and each
   of the three documented I2C addresses, through the unpublished host-only
   conformance package's public driver/model adapter check, with independently
-  asserted command, address, and maximum-delay mappings. This covers every
-  current public device operation.
+  asserted command and address mappings, independently asserted
+  measurement/heater/reset frontiers, and an independently asserted serial
+  reference wait that remains distinguishable from device `Busy`. This covers
+  every current public device operation.
   Completeness of that software evidence — how much of the production driver
   and model the checks executed — is measured by the local gate as
   model-conformance coverage. That measurement is recorded with the run that
@@ -300,6 +358,10 @@ validation assignment.
   parts are indistinguishable.
 - Physically observed: none.
 - Qualified: none.
+
+The absence of physical evidence limits physical and qualification claims. It
+does not block public repository visibility or an honestly labeled Incubating
+prerelease publication.
 
 ## Definition of stable
 
