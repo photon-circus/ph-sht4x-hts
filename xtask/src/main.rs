@@ -141,6 +141,24 @@ impl CiSummary {
         });
     }
 
+    fn record_coverage(
+        &mut self,
+        name: impl Into<String>,
+        result: Result<CoverageSnapshot, String>,
+    ) -> Result<(), String> {
+        match result {
+            Ok(snapshot) => {
+                self.pass(name);
+                self.coverage.push(snapshot);
+                Ok(())
+            }
+            Err(error) => {
+                self.fail(name, &error);
+                Err(error)
+            }
+        }
+    }
+
     fn skip(&mut self, name: impl Into<String>, reason: impl Into<String>) {
         self.checks.push(CheckRecord {
             name: name.into(),
@@ -201,9 +219,21 @@ macro_rules! ci_step {
     }};
 }
 
+macro_rules! ci_coverage_step {
+    ($summary:ident, $name:expr, $body:expr) => {{
+        let name = $name;
+        println!("check: {name}");
+        if let Err(error) = $summary.record_coverage(name, $body) {
+            emit_ci_summary(&$summary);
+            return Err(error);
+        }
+    }};
+}
+
 fn run_ci() -> Result<(), String> {
     let workspace = workspace_dir()?;
     let config = load_config()?;
+    remove_stale_coverage_summary(&workspace, &config.coverage)?;
     let mut summary = CiSummary::default();
 
     ci_step!(
@@ -240,24 +270,33 @@ fn run_ci() -> Result<(), String> {
         run_cargo(&workspace, test_args(true))
     );
 
-    match run_coverage(&workspace, &config.coverage) {
-        Ok(coverage) => {
-            summary.pass("unit test coverage");
-            summary.pass("model-conformance coverage");
-            summary.coverage = coverage;
-            if let Err(error) =
-                write_coverage_summary_file(&workspace, &config.coverage, &summary.coverage)
-            {
-                summary.fail("coverage summary file", &error);
-                emit_ci_summary(&summary);
-                return Err(error);
-            }
-        }
-        Err(error) => {
-            summary.fail("coverage", &error);
-            emit_ci_summary(&summary);
-            return Err(error);
-        }
+    ci_coverage_step!(
+        summary,
+        "unit test coverage",
+        run_coverage(
+            &workspace,
+            &config.coverage,
+            "unit.json",
+            "unit tests",
+            unit_coverage_args,
+        )
+    );
+    ci_coverage_step!(
+        summary,
+        "model-conformance coverage",
+        run_coverage(
+            &workspace,
+            &config.coverage,
+            "conformance.json",
+            "model conformance",
+            conformance_coverage_args,
+        )
+    );
+    if let Err(error) = write_coverage_summary_file(&workspace, &config.coverage, &summary.coverage)
+    {
+        summary.fail("coverage summary file", &error);
+        emit_ci_summary(&summary);
+        return Err(error);
     }
 
     println!("check: supported target compilation");
@@ -493,6 +532,10 @@ fn write_coverage_summary_file(
             path.display()
         )
     })
+}
+
+fn remove_stale_coverage_summary(workspace: &Path, config: &CoverageConfig) -> Result<(), String> {
+    remove_stale_coverage_artifact(&workspace.join(&config.output_directory).join("summary.txt"))
 }
 
 fn workspace_dir() -> Result<PathBuf, String> {
@@ -761,7 +804,10 @@ fn value_without_comment(value: &str) -> &str {
 fn run_coverage(
     workspace: &Path,
     config: &CoverageConfig,
-) -> Result<Vec<CoverageSnapshot>, String> {
+    report_name: &str,
+    label: &str,
+    args: fn(&CoverageConfig, &Path) -> Vec<OsString>,
+) -> Result<CoverageSnapshot, String> {
     if !executable_available("cargo-llvm-cov") {
         return Err(
             "cargo-llvm-cov is required for coverage; install it with `cargo install cargo-llvm-cov --locked`"
@@ -777,22 +823,10 @@ fn run_coverage(
         )
     })?;
 
-    let unit_report = output_directory.join("unit.json");
-    println!("check: unit test coverage");
-    remove_stale_report(&unit_report)?;
-    run_cargo(workspace, unit_coverage_args(config, &unit_report))?;
-    let unit = coverage_snapshot(workspace, "unit tests", &unit_report)?;
-
-    let conformance_report = output_directory.join("conformance.json");
-    println!("check: model-conformance coverage");
-    remove_stale_report(&conformance_report)?;
-    run_cargo(
-        workspace,
-        conformance_coverage_args(config, &conformance_report),
-    )?;
-    let conformance = coverage_snapshot(workspace, "model conformance", &conformance_report)?;
-
-    Ok(vec![unit, conformance])
+    let report = output_directory.join(report_name);
+    remove_stale_coverage_artifact(&report)?;
+    run_cargo(workspace, args(config, &report))?;
+    coverage_snapshot(workspace, label, &report)
 }
 
 fn coverage_snapshot(
@@ -886,12 +920,12 @@ fn conformance_coverage_args(config: &CoverageConfig, output: &Path) -> Vec<OsSt
     args
 }
 
-fn remove_stale_report(path: &Path) -> Result<(), String> {
+fn remove_stale_coverage_artifact(path: &Path) -> Result<(), String> {
     match fs::remove_file(path) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(format!(
-            "could not remove stale coverage report {}: {error}",
+            "could not remove stale coverage artifact {}: {error}",
             path.display()
         )),
     }
@@ -1161,6 +1195,28 @@ publish = true
         }
     }
 
+    fn sample_coverage_snapshot(label: &str, report: &str) -> CoverageSnapshot {
+        CoverageSnapshot {
+            label: label.to_owned(),
+            report: PathBuf::from(report),
+            totals: CoverageTotals {
+                functions: CoverageMetric {
+                    count: 3,
+                    covered: 2,
+                },
+                lines: CoverageMetric {
+                    count: 10,
+                    covered: 9,
+                },
+                regions: CoverageMetric {
+                    count: 12,
+                    covered: 10,
+                },
+            },
+            files: Vec::new(),
+        }
+    }
+
     #[test]
     fn rustfmt_write_omits_check_and_the_gate_passes_it() {
         assert_eq!(rustfmt_args(false), ["fmt", "--all"]);
@@ -1244,6 +1300,39 @@ publish = true
         assert!(
             rendered.contains("result  failed  clippy  (1 passed, 0 skipped, 0 indeterminate)")
         );
+    }
+
+    #[test]
+    fn ci_summary_preserves_successful_coverage_when_the_next_check_fails() {
+        let mut summary = CiSummary::default();
+        summary
+            .record_coverage(
+                "unit test coverage",
+                Ok(sample_coverage_snapshot(
+                    "unit tests",
+                    "target/coverage/unit.json",
+                )),
+            )
+            .unwrap();
+        let error = summary
+            .record_coverage(
+                "model-conformance coverage",
+                Err("conformance command failed".to_owned()),
+            )
+            .unwrap_err();
+
+        assert_eq!(error, "conformance command failed");
+        assert_eq!(summary.coverage.len(), 1);
+        let rendered = format_ci_summary(&summary);
+        assert!(rendered.contains("passed        unit test coverage"));
+        assert!(
+            rendered
+                .contains("failed        model-conformance coverage: conformance command failed")
+        );
+        assert!(rendered.contains("unit tests  lines 9/10 (90.00%)"));
+        assert!(rendered.contains(
+            "result  failed  model-conformance coverage  (1 passed, 0 skipped, 0 indeterminate)"
+        ));
     }
 
     #[test]
@@ -1544,18 +1633,35 @@ publish = true
     }
 
     #[test]
-    fn stale_coverage_report_is_removed_before_a_run() {
+    fn stale_coverage_artifact_is_removed_before_a_run() {
         let directory =
             env::temp_dir().join(format!("ph-sht4x-hts-coverage-test-{}", std::process::id()));
         fs::create_dir_all(&directory).unwrap();
         let report = directory.join("stale.json");
         fs::write(&report, "stale").unwrap();
 
-        remove_stale_report(&report).unwrap();
+        remove_stale_coverage_artifact(&report).unwrap();
         assert!(!report.exists());
-        remove_stale_report(&report).unwrap();
+        remove_stale_coverage_artifact(&report).unwrap();
 
         fs::remove_dir(&directory).unwrap();
+    }
+
+    #[test]
+    fn stale_coverage_summary_is_removed_before_gate_checks() {
+        let workspace =
+            env::temp_dir().join(format!("ph-sht4x-hts-summary-test-{}", std::process::id()));
+        let mut config = valid_config();
+        config.coverage.output_directory = "target/coverage".to_owned();
+        let output_directory = workspace.join(&config.coverage.output_directory);
+        fs::create_dir_all(&output_directory).unwrap();
+        let summary = output_directory.join("summary.txt");
+        fs::write(&summary, "stale evidence").unwrap();
+
+        remove_stale_coverage_summary(&workspace, &config.coverage).unwrap();
+        assert!(!summary.exists());
+
+        fs::remove_dir_all(&workspace).unwrap();
     }
 
     #[test]
